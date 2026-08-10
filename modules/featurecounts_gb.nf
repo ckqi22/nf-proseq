@@ -17,30 +17,38 @@ process featurecounts_gb {
     """
     source /workplace/hanguojun/mambaforge/bin/activate snakemake
 
-    # PRO-seq strand-specific gene body quantification (featureCounts -s 2 reverse-stranded)
-    # Gene body: TSS+${offset} to TES (full gene minus the TSS-proximal pause window)
+    # Step 1: Generate gene body SAF annotation
+    # Gene body = TSS+${offset} to TES (excludes TSS-proximal pause region)
+    ${params.r} ${projectDir}/bin/generate_gene_body_regions.R \\
+        --gtf ${gtf} \\
+        --offset ${offset} \\
+        --output ${meta.sample}.gene_body.saf
 
-    # Plus strand BAM
+    # Step 2: Strand-specific quantification against gene body SAF
+    # featureCounts -s 2: reverse-stranded (dUTP protocol)
+    # -F SAF: use SAF format annotation instead of GTF
+
+    # Plus strand BAM → minus-strand gene expression
     ${feature_counts} \\
         -s 2 \\
-        -t exon \\
-        -g gene_id \\
-        -a ${gtf} \\
+        -F SAF \\
+        -g GeneID \\
+        -a ${meta.sample}.gene_body.saf \\
         -o ${meta.sample}.gene_body_plus.counts.txt \\
         -T 4 \\
         ${plus_bam} 2>&1 | tee -a ${meta.sample}.gene_body_featureCounts.log
 
-    # Minus strand BAM
+    # Minus strand BAM → plus-strand gene expression
     ${feature_counts} \\
         -s 2 \\
-        -t exon \\
-        -g gene_id \\
-        -a ${gtf} \\
+        -F SAF \\
+        -g GeneID \\
+        -a ${meta.sample}.gene_body.saf \\
         -o ${meta.sample}.gene_body_minus.counts.txt \\
         -T 4 \\
         ${minus_bam} 2>&1 | tee -a ${meta.sample}.gene_body_featureCounts.log
 
-    # Combine plus and minus strand counts
+    # Step 3: Combine plus and minus strand counts
     ${params.r} ${projectDir}/bin/combine_chain_counts.R \\
         --plus ${meta.sample}.gene_body_plus.counts.txt \\
         --minus ${meta.sample}.gene_body_minus.counts.txt \\

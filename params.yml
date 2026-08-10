@@ -48,6 +48,10 @@ metagene:
   tss_window: 3000             # TSS ± 窗口大小（bp）
   tes_window: 3000             # TES ± 窗口大小（bp）
 
+# ---- BigWig 参数 ---- 
+effective_genome_size = 2913022398  # hg38 effective genome size for RPGC normalization
+
+
 # ---- 差异分析 ----
 diff:
   tool: "edgeR"                # edgeR（主）或 DESeq2（备选）

@@ -31,7 +31,7 @@ process featurecounts_tss {
     ${feature_counts} \\
         -s 2 \\
         -F SAF \\
-        -g gene_id \\
+        -g GeneID \\
         -a ${meta.sample}.tss_regions.saf \\
         -o ${meta.sample}.tss_plus.counts.txt \\
         -T 4 \\
@@ -41,7 +41,7 @@ process featurecounts_tss {
     ${feature_counts} \\
         -s 2 \\
         -F SAF \\
-        -g gene_id \\
+        -g GeneID \\
         -a ${meta.sample}.tss_regions.saf \\
         -o ${meta.sample}.tss_minus.counts.txt \\
         -T 4 \\
