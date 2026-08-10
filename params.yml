@@ -1,0 +1,63 @@
+# ============================================================
+# PRO-seq — Nextflow 自动化分析流程
+# ============================================================
+# 计划书版本：v1.0 (2026.08.10)
+# 链特异性 dUTP 建库 | Spike-in 校正 | TSS 暂停指数 | Pol II 活性位点
+# ============================================================
+
+# ---- 项目基本信息 ----
+name: "PRO-seq"
+projectNo.: ""
+institute: ""
+species: human
+build: null
+instrument_model: Illumina_NovaSeq_6000
+sample_type: cell
+sample_number: 2
+gtf:
+genome_fasta:
+
+# ---- Spike-in 配置（无 spike-in 则留空）----
+spike_genome: "dm6"
+spike_fasta: null
+spike_gtf: null
+
+# ---- 分析参数 ----
+adapter: I                     # [I, UMI, HT, SP 择其一]
+sample_sheet: "samplesheet.csv"
+umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
+
+# ---- 质控阈值 ----
+threshold:
+  data_amount: 0.8G            # 双端数据量阈值
+  data_percentage: 0.2         # 容许偏差比例
+  duplicate_rate: 0.6          # 重复率阈值
+  mapping_rate: 0.2            # 比对率阈值
+  mRNADE_number: 300           # 差异基因数量阈值
+
+# ---- TSS 暂停指数参数 ----
+tss:
+  upstream: 50                 # TSS 上游窗口（bp），默认 TSS-50bp
+  downstream: 300              # TSS 下游窗口（bp），默认 TSS+300bp
+  gene_body_offset: 301        # 基因体起始偏移（bp），TSS+301bp 起
+  min_gene_length: 800         # 最小基因长度（bp），短于此值不计算 PI
+
+# ---- Metagene 分析 ----
+metagene:
+  tool: "deepTools"            # deepTools 或 ngsplot
+  tss_window: 3000             # TSS ± 窗口大小（bp）
+  tes_window: 3000             # TES ± 窗口大小（bp）
+
+# ---- 差异分析 ----
+diff:
+  tool: "edgeR"                # edgeR（主）或 DESeq2（备选）
+  fc_cutoff: 1.5               # 默认 Fold Change 阈值
+  pval_cutoff: 0.05            # 默认 P-value 阈值
+
+# ---- 样本分组 ----
+group:
+  K562: K562_1, K562_2
+
+# ---- 比较组（A vs B, FC, P, paired/unpaired）----
+compared_groups:
+  # - group_A, group_B, 1.5, 0.05, unpaired

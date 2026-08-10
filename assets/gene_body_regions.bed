@@ -1,0 +1,21 @@
+# Gene body regions for PRO-seq: TSS+301bp to TES
+# Generated from RefSeq gene annotations using:
+#   For each gene:
+#     Plus-strand genes:  gene_body_start = TSS + 301, gene_body_end = TES
+#     Minus-strand genes: gene_body_start = TSS, gene_body_end = TES - 301
+#   Where TSS = gene start (plus) / gene end (minus)
+#   and   TES = gene end (plus) / gene start (minus)
+# Columns: chr, start, end, gene_id, score, strand
+#
+# This file should be regenerated for each reference genome/annotation version.
+# Example generation command (using bedtools and a RefSeq GTF):
+#   awk -F'\t' -v OFS='\t' '$3=="transcript"' refseq.gtf | \
+#     awk -v OFS='\t' '{
+#       if($7=="+") {tss=$4; tes=$5; gb_start=tss+301; gb_end=tes; print $1, gb_start, gb_end, $9, ".", $7}
+#       else        {tss=$5; tes=$4; gb_start=tes; gb_end=tss-301; print $1, gb_start, gb_end, $9, ".", $7}
+#     }' | sort -k1,1 -k2,2n | uniq > gene_body_regions.bed
+#
+# Note: Gene body length = TES - (TSS+301) + 1 for plus strand
+#       Gene body length = (TSS-301) - TES + 1 for minus strand
+# Filter out genes where gene_body_end <= gene_body_start (length <= 0)
+# The pausing_index.R script additionally filters genes with length < 800bp (--min_gene_length).
