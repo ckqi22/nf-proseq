@@ -1,3 +1,0 @@
-sample,group,r1,r2
-K562_1,K562,/workplace/chenkai/test_data/PRO-seq/K562_uC0_rep1_R1.fastq.gz,/workplace/chenkai/test_data/PRO-seq/K562_uC0_rep1_R2.fastq.gz
-K562_2,K562,/workplace/chenkai/test_data/PRO-seq/K562_uC0_rep2_R1.fastq.gz,/workplace/chenkai/test_data/PRO-seq/K562_uC0_rep2_R2.fastq.gz
