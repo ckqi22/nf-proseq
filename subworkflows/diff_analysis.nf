@@ -1,10 +1,10 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: diff_analysis
-// From per-sample merged count files, extract gene body column,
-// build combined matrix, then run DE + enrichment + plots.
+// Extract gene body columns → combined matrix → DE + enrichment + plots.
 //
 
+include { extract_region  } from '../modules/extract_region.nf'
 include { edger_de        } from '../modules/edger_de.nf'
 include { enrichment_go   } from '../modules/enrichment_go.nf'
 include { enrichment_kegg } from '../modules/enrichment_kegg.nf'
@@ -23,28 +23,8 @@ workflow diff_analysis {
     main:
     all_files = counts_files.collect()
 
-    // Extract gene body columns → combined matrix
-    gb_matrix = all_files.map { files ->
-        def out = file("${workDir}/gb_merged_matrix.txt")
-        def rf = files.collect { "'${it}'" }.join(', ')
-        """
-        ${params.r} -e "
-            files <- c(${rf})
-            first <- read.delim(files[1], header=TRUE, stringsAsFactors=FALSE)
-            gb_cols <- grep('_gene_body\\$', names(first), value=TRUE)
-            result <- first[, c('gene_id', gb_cols), drop=FALSE]
-            for (f in files[-1]) {
-                dt <- read.delim(f, header=TRUE, stringsAsFactors=FALSE)
-                gc <- grep('_gene_body\\$', names(dt), value=TRUE)
-                result[[gc[1]]] <- dt[[gc[1]]][match(result\\$gene_id, dt\\$gene_id)]
-            }
-            result[is.na(result)] <- 0
-            write.table(result, file='${out}', sep='\\t', quote=FALSE, row.names=FALSE)
-            message('[diff_analysis] Gene body matrix: ', nrow(result), ' genes x ', ncol(result)-1, ' samples')
-        "
-        """
-        return out
-    }
+    // Extract gene body matrix
+    gb_mat = extract_region(all_files, "_gene_body")
 
     // Groups YAML
     groups_yml = Channel.value(params.group ?: [:]).map { groups ->
@@ -66,6 +46,8 @@ workflow diff_analysis {
         compList.each { c -> f.text += "${c[0]},${c[1]}\n" }
         return f
     }
+
+    gb_matrix = gb_mat.matrix
 
     edger_de(gb_matrix, groups_yml, comp_csv, config_ch)
     enrichment_go(edger_de.out.diff_genes, config_ch)
