@@ -6,22 +6,21 @@
 // 14-step automated analysis for PRO-seq (Precision Run-On sequencing)
 //
 // Plan Reference:
-//  01. Manual: project info
-//  02. Manual: QC info
-//  03. fastp QC -> bowtie2 alignment -> strand separation
-//  04. featureCounts (gene body + TSS) -> spike correction -> strand-specific quantification
-//  05. TSS pausing index calculation
-//  06. edgeR differential expression
-//  07. GO enrichment
-//  08. KEGG enrichment
-//  09. GSEA
-//  10. Heatmap
-//  11. Scatter plot
-//  12. Volcano plot
-//  13. Pol II active site profiling + metagene (TSS/TES)
-//  14. bigwig + IGV + GEO + PDF report
+//  01. Fastp QC + adapter trimming
+//  02. Bowtie2 --fr alignment (dUTP: R2=sense, R1=antisense)
+//  03. Strand split → plus/minus BAMs (for BigWig visualization)
+//  04. featureCounts -s 2 → TSS counts + gene body counts (SAF-based, chain handled internally)
+//  05. Pausing Index (TSS / gene body)
+//  06. edgeR differential expression (on gene body counts)
+//  07. GO / KEGG enrichment
+//  08. GSEA
+//  09. Heatmap / Scatter / Volcano / PCA
+//  10. Metagene (TSS/TES) via deepTools
+//  11. Pol II profiling + BigWig + IGV tracks
+//  12. GEO submission prep
+//  13. Final PDF report
 //
-// Samplesheet format: sample,group,strand,spike_ratio,R1,R2
+// Samplesheet format: sample,group,r1,r2
 // ============================================================
 
 // ------------------------------------------------------------------
@@ -94,43 +93,37 @@ workflow {
     preprocess(read_ch, params.adapter ?: 'I', config_ch)
 
     // ==================================================================
-    // Step 3: Quantification (04. Gene body + TSS + Spike correction)
+    // Step 3: Quantification (TSS + gene body via featureCounts -s 2 -F SAF)
     // ==================================================================
-    quantify(preprocess.out.strand_bams, config_ch)
+    quantify(preprocess.out.bam, config_ch)
 
     // ==================================================================
-    // Step 4: Pausing Index (05. TSS pausing index calculation)
+    // Step 4: Pausing Index (TSS / gene body, extracted from merged counts)
     // ==================================================================
-    // Prepare groups configuration from params.yml
-    // groups_config is a map: group_name -> [sample1, sample2, ...]
     groups_config_ch = channel.value(params.group ?: [:])
 
     pause_analysis(
-        quantify.out.tss_counts,
-        quantify.out.gene_body_counts,
+        quantify.out.counts,
         groups_config_ch
     )
 
     // ==================================================================
-    // Step 5: Differential analysis (06-12. DE + Enrichment + Plots)
+    // Step 5: Differential analysis (on gene body column from merged counts)
     // ==================================================================
-    // Collect gene body counts into a merged matrix
-    // Fork channel: used by both diff_analysis and deliver
-    quantify.out.gene_body_counts
+    quantify.out.counts
         .flatten()
-        .into { gb_matrix_de; gb_matrix_deliver }
+        .into { counts_de; counts_deliver }
 
-    // Build comparisons string from params compared-groups
     comparisons_ch = channel.value(params.compared_groups ?: [])
 
     diff_analysis(
-        gb_matrix_de,
+        counts_de,
         comparisons_ch,
         config_ch
     )
 
     // ==================================================================
-    // Step 6: Metagene analysis (13. TSS/TES metagene profiles)
+    // Step 5: Metagene analysis (TSS/TES profiles via deepTools)
     // ==================================================================
     // Prepare plus and minus BAM lists for metagene
     // strand_bams contains: tuple val(meta), path(plus_bam), path(minus_bam)
@@ -151,12 +144,12 @@ workflow {
     metagene_analysis(plus_bam_list, minus_bam_list, config_ch)
 
     // ==================================================================
-    // Step 7: Deliver (13-14. Pol II profiling + BigWig + IGV + GEO + Report)
+    // Step 6: Deliver (Pol II + BigWig + IGV + GEO + Report)
     // ==================================================================
     deliver(
         preprocess.out.strand_bams,
         preprocess.out.bam,
-        gb_matrix_deliver,
+        counts_deliver,
         channel.value(file(params.sample_sheet)),
         config_ch
     )
@@ -183,12 +176,8 @@ output {
     '04.Alignment/genomeRate'    { path "04.Alignment/" }
     '04.Alignment/alignment_log' { path "04.Alignment/" }
 
-    '05.Quantification/GeneBody/plus_counts'  { path "05.Quantification/GeneBody/" }
-    '05.Quantification/GeneBody/minus_counts' { path "05.Quantification/GeneBody/" }
-    '05.Quantification/GeneBody/combined'     { path "05.Quantification/GeneBody/" }
-    '05.Quantification/TSS/plus_counts'       { path "05.Quantification/TSS/" }
-    '05.Quantification/TSS/minus_counts'      { path "05.Quantification/TSS/" }
-    '05.Quantification/TSS/combined'          { path "05.Quantification/TSS/" }
+    '05.Quantification/counts'   { path "05.Quantification/" }
+    '05.Quantification/summary'  { path "05.Quantification/" }
 
     '06.Pausing_Index/pi_all'    { path "06.Pausing_Index/" }
     '06.Pausing_Index/pi_boxplot' { path "06.Pausing_Index/" }

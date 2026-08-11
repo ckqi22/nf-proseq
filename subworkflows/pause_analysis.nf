@@ -1,21 +1,19 @@
-﻿#!/usr/bin/env nextflow
+#!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: pause_analysis
-// Merges per-sample TSS and gene body counts, then computes pausing index.
+// From per-sample merged count files (3 regions), extract TSS and gene body
+// columns, build combined matrices, and compute pausing index.
 //
 
 include { pausing_index } from '../modules/pausing_index.nf'
 
 workflow pause_analysis {
     take:
-    tss_counts          // channel: per-sample TSS count files
-    gene_body_counts    // channel: per-sample gene body count files
-    groups_config       // channel: val(map) — group_name -> [sample1, sample2, ...]
+    counts_files       // channel: per-sample proseq_counts.txt files
+    groups_config      // channel: val(map)
 
     main:
-    // Collect per-sample files
-    tss_files = tss_counts.collect()
-    gb_files  = gene_body_counts.collect()
+    all_files = counts_files.collect()
 
     // Generate groups YAML
     groups_yml = groups_config.map { groups ->
@@ -29,54 +27,49 @@ workflow pause_analysis {
         return f
     }
 
-    // Merge per-sample count files into combined matrices (R inline)
-    merged_tss = tss_files.map { files ->
-        def out = file("${workDir}/tss_merged.txt")
+    // Extract TSS and gene body matrices from merged files
+    matrices = all_files.map { files ->
+        def tss_out = file("${workDir}/tss_merged.txt")
+        def gb_out  = file("${workDir}/gb_merged.txt")
         def rf = files.collect { "'${it}'" }.join(', ')
         """
         ${params.r} -e "
             files <- c(${rf})
             first <- read.delim(files[1], header=TRUE, stringsAsFactors=FALSE)
-            gene_col <- names(first)[1]
-            result <- first[, gene_col, drop=FALSE]
-            if ('Length' %in% names(first)) result\\$Length <- first\\$Length
-            for (f in files) {
-                nm <- sub('\\\\.tss_counts\\\\.txt\\$', '', basename(f))
+
+            # TSS matrix: gene_id + _tss columns
+            tss_col  <- 'gene_id'
+            tss_cols <- grep('_tss\\$', names(first), value=TRUE)
+            tss_mat  <- first[, c(tss_col, tss_cols), drop=FALSE]
+
+            # Gene body matrix: gene_id + _gene_body columns
+            gb_col   <- 'gene_id'
+            gb_cols  <- grep('_gene_body\\$', names(first), value=TRUE)
+            gb_mat   <- first[, c(gb_col, gb_cols), drop=FALSE]
+
+            # Fill from remaining files
+            for (f in files[-1]) {
                 dt <- read.delim(f, header=TRUE, stringsAsFactors=FALSE)
-                count_cols <- grep('_Total\\$', names(dt), value=TRUE)
-                if (length(count_cols) == 0) count_cols <- tail(names(dt), 1)
-                result[[nm]] <- dt[[count_cols[1]]]
+                tc <- grep('_tss\\$', names(dt), value=TRUE)
+                gc <- grep('_gene_body\\$', names(dt), value=TRUE)
+                tss_mat[[tc[1]]] <- dt[[tc[1]]][match(tss_mat\\$gene_id, dt\\$gene_id)]
+                gb_mat[[gc[1]]]   <- dt[[gc[1]]][match(gb_mat\\$gene_id, dt\\$gene_id)]
             }
-            write.table(result, file='${out}', sep='\\t', quote=FALSE, row.names=FALSE)
+            tss_mat[is.na(tss_mat)] <- 0
+            gb_mat[is.na(gb_mat)]   <- 0
+
+            write.table(tss_mat, file='${tss_out}', sep='\\t', quote=FALSE, row.names=FALSE)
+            write.table(gb_mat,  file='${gb_out}',  sep='\\t', quote=FALSE, row.names=FALSE)
+            message('[pause_analysis] TSS: ', nrow(tss_mat), ' genes x ', ncol(tss_mat)-1, ' samples')
+            message('[pause_analysis] GB:  ', nrow(gb_mat),  ' genes x ', ncol(gb_mat)-1,  ' samples')
         "
         """
-        return out
+        return [tss_out, gb_out]
     }
 
-    merged_gb = gb_files.map { files ->
-        def out = file("${workDir}/gb_merged.txt")
-        def rf = files.collect { "'${it}'" }.join(', ')
-        """
-        ${params.r} -e "
-            files <- c(${rf})
-            first <- read.delim(files[1], header=TRUE, stringsAsFactors=FALSE)
-            gene_col <- names(first)[1]
-            result <- first[, gene_col, drop=FALSE]
-            if ('Length' %in% names(first)) result\\$Length <- first\\$Length
-            for (f in files) {
-                nm <- sub('\\\\.gene_body_counts\\\\.txt\\$', '', basename(f))
-                dt <- read.delim(f, header=TRUE, stringsAsFactors=FALSE)
-                count_cols <- grep('_Total\\$', names(dt), value=TRUE)
-                if (length(count_cols) == 0) count_cols <- tail(names(dt), 1)
-                result[[nm]] <- dt[[count_cols[1]]]
-            }
-            write.table(result, file='${out}', sep='\\t', quote=FALSE, row.names=FALSE)
-        "
-        """
-        return out
-    }
+    merged_tss = matrices.map { m -> m[0] }
+    merged_gb  = matrices.map { m -> m[1] }
 
-    // Run pausing index (no spike-in)
     pausing_index(merged_tss, merged_gb, groups_yml, Channel.empty())
 
     emit:

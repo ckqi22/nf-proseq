@@ -1,7 +1,8 @@
-﻿#!/usr/bin/env nextflow
+#!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: diff_analysis
-// Chains: merge counts -> edgeR DE -> GO/KEGG enrichment -> GSEA -> plots
+// From per-sample merged count files, extract gene body column,
+// build combined matrix, then run DE + enrichment + plots.
 //
 
 include { edger_de        } from '../modules/edger_de.nf'
@@ -15,39 +16,37 @@ include { pca_plot        } from '../modules/pca_plot.nf'
 
 workflow diff_analysis {
     take:
-    gene_body_counts   // channel: per-sample gene body count files
+    counts_files       // channel: per-sample proseq_counts.txt files
     comparisons_config // channel: val(list)
     config_ch          // channel: val(config)
 
     main:
-    // Collect per-sample files
-    gb_files = gene_body_counts.collect()
+    all_files = counts_files.collect()
 
-    // Merge into combined matrix
-    merged_counts = gb_files.map { files ->
+    // Extract gene body columns → combined matrix
+    gb_matrix = all_files.map { files ->
         def out = file("${workDir}/gb_merged_matrix.txt")
         def rf = files.collect { "'${it}'" }.join(', ')
         """
         ${params.r} -e "
             files <- c(${rf})
             first <- read.delim(files[1], header=TRUE, stringsAsFactors=FALSE)
-            gene_col <- names(first)[1]
-            result <- first[, gene_col, drop=FALSE]
-            if ('Length' %in% names(first)) result\\$Length <- first\\$Length
-            for (f in files) {
-                nm <- sub('\\\\.gene_body_counts\\\\.txt\\$', '', basename(f))
+            gb_cols <- grep('_gene_body\\$', names(first), value=TRUE)
+            result <- first[, c('gene_id', gb_cols), drop=FALSE]
+            for (f in files[-1]) {
                 dt <- read.delim(f, header=TRUE, stringsAsFactors=FALSE)
-                count_cols <- grep('_Total\\$', names(dt), value=TRUE)
-                if (length(count_cols) == 0) count_cols <- tail(names(dt), 1)
-                result[[nm]] <- dt[[count_cols[1]]]
+                gc <- grep('_gene_body\\$', names(dt), value=TRUE)
+                result[[gc[1]]] <- dt[[gc[1]]][match(result\\$gene_id, dt\\$gene_id)]
             }
+            result[is.na(result)] <- 0
             write.table(result, file='${out}', sep='\\t', quote=FALSE, row.names=FALSE)
+            message('[diff_analysis] Gene body matrix: ', nrow(result), ' genes x ', ncol(result)-1, ' samples')
         "
         """
         return out
     }
 
-    // Generate groups YAML
+    // Groups YAML
     groups_yml = Channel.value(params.group ?: [:]).map { groups ->
         def lines = []
         groups.each { groupName, sampleList ->
@@ -59,7 +58,7 @@ workflow diff_analysis {
         return f
     }
 
-    // Generate comparisons CSV
+    // Comparisons CSV
     comp_csv = comparisons_config.map { comps ->
         def f = file("${workDir}/de_comparisons.csv")
         def compList = comps instanceof List ? comps : []
@@ -68,20 +67,13 @@ workflow diff_analysis {
         return f
     }
 
-    // edgeR DE
-    edger_de(merged_counts, groups_yml, comp_csv, config_ch)
-
-    // GO / KEGG enrichment
+    edger_de(gb_matrix, groups_yml, comp_csv, config_ch)
     enrichment_go(edger_de.out.diff_genes, config_ch)
     enrichment_kegg(edger_de.out.diff_genes, config_ch)
-
-    // GSEA
-    gsea(merged_counts, groups_yml, comp_csv, config_ch)
-
-    // Plots
-    pca_plot(merged_counts, config_ch)
-    heatmap(edger_de.out.diff_genes, merged_counts, config_ch)
-    scatter(merged_counts, comp_csv, config_ch)
+    gsea(gb_matrix, groups_yml, comp_csv, config_ch)
+    pca_plot(gb_matrix, config_ch)
+    heatmap(edger_de.out.diff_genes, gb_matrix, config_ch)
+    scatter(gb_matrix, comp_csv, config_ch)
     volcano(edger_de.out.all_comparisons, config_ch)
 
     emit:

@@ -16,13 +16,14 @@ process alignment_bowtie2 {
     script:
     """
     source /workplace/hanguojun/mambaforge/bin/activate snakemake
-    
+
+    # dUTP library: --fr correct mate orientation
     bowtie2 \\
     -x ${config.bowtie2_index} \\
     -1 ${reads[0]} -2 ${reads[1]} \\
     -p 10 \\
     -q \\
-    --rf \\
+    --fr \\
     --very-sensitive \\
     --no-unal \\
     --no-discordant \\
