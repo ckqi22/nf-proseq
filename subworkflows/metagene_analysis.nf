@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env nextflow
+#!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: metagene_analysis
 // Chains: metagene_tss + metagene_tes (strand-specific metagene profiles)
