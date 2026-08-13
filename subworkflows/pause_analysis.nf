@@ -4,7 +4,8 @@
 // Extract TSS and gene body columns → combined matrices → pausing index.
 //
 
-include { extract_region } from '../modules/extract_region.nf'
+include { extract_region as extract_tss_region} from '../modules/extract_region.nf'
+include { extract_region as extract_gb_region} from '../modules/extract_region.nf'
 include { pausing_index   } from '../modules/pausing_index.nf'
 
 workflow pause_analysis {
@@ -28,10 +29,10 @@ workflow pause_analysis {
     }
 
     // Extract TSS and gene body matrices
-    tss_mat = extract_region(all_files, "_tss")
-    gb_mat  = extract_region(all_files, "_gene_body")
+    tss_mat = extract_tss_region(all_files, "_tss")
+    gb_mat  = extract_gb_region(all_files, "_gene_body")
 
-    pausing_index(tss_mat.matrix, gb_mat.matrix, groups_yml, Channel.empty())
+    pausing_index(tss_mat.out.matrix, gb_mat.out.matrix, groups_yml, Channel.empty())
 
     emit:
     pi_all     = pausing_index.out.pi_all

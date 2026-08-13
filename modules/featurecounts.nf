@@ -1,22 +1,59 @@
-process featurecounts_proseq {
+process FEATURECOUNTS {
     tag "${meta.sample}"
 
     input:
-    tuple val(meta), path(bam), val(config)
+    tuple val(meta), path(bams)
+    path annotation
+    val type
 
     output:
     path "${meta.sample}.proseq_counts.txt", emit: counts
     path "${meta.sample}.proseq_counts.txt.summary", emit: summary
 
     script:
+    def paired_end = meta.single_end ? '' : '-p'
+
+    def strandedness = 0
+    if (params.strandedness == 'forward') {
+        strandedness = 1
+    } else if (params.strandedness == 'reverse') {
+        strandedness = 2
+    }
+
     def gtf             = config.gtf
     def feature_counts  = params.feature_counts
     def upstream        = params.tss?.upstream ?: params.tss_upstream ?: 50
     def downstream      = params.tss?.downstream ?: params.tss_downstream ?: 300
     def offset          = params.tss?.gene_body_offset ?: params.gene_body_offset ?: 301
 
+
     """
     source /workplace/hanguojun/mambaforge/bin/activate snakemake
+
+    ${params.feature_counts} \\
+        ${paired_end} \\
+        -T 2 \\
+        -a ${annotation} \\
+        -t ${type} \\
+        -g gene_id \\
+        -s ${strandedness} \\
+        -o ${prefix}.featureCounts.txt \\
+        ${bams.join(' ')}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # === Step 1: Generate both SAF files (one GTF parse) ===
 

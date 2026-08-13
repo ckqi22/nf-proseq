@@ -1,13 +1,14 @@
 #!/usr/bin/env nextflow
 //
-// SUBWORKFLOW: quantify
+// SUBWORKFLOW: quantification
 // Three regions per gene: full gene / TSS pause / gene body
 // All in one output file per sample.
 //
 
-include { featurecounts_proseq } from '../modules/featurecounts_proseq.nf'
+include {  }
+include { FEATURECOUNTS } from '../modules/featurecounts.nf'
 
-workflow quantify {
+workflow quantification {
     take:
     bam_ch            // channel: tuple val(meta), path(bam)
     config_ch         // channel: val(config)

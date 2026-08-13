@@ -18,12 +18,15 @@
 
 include { parse_config      } from './modules/parse_config.nf'
 include { preprocess        } from './subworkflows/preprocess.nf'
+include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
+
 include { quantify          } from './subworkflows/quantify.nf'
 include { pause_analysis    } from './subworkflows/pause_analysis.nf'
 include { metagene_analysis } from './subworkflows/metagene_analysis.nf'
 
 workflow {
 
+    main:
     // ========================================================================
     // Step 0: Parse genome configuration
     // ========================================================================
@@ -35,6 +38,7 @@ workflow {
         }
         println "============================================"
         println " PRO-seq pipeline — config parsed"
+        println " genome_fasta  : ${config.genome_fasta}"
         println " bowtie2_index : ${config.bowtie2_index}"
         println " gtf           : ${config.gtf}"
         println " build         : ${config.build}"
@@ -49,20 +53,32 @@ workflow {
     read_ch = Channel.fromPath(params.sample_sheet)
         .splitCsv(header: true)
         .map { row ->
-            if (!row.sample)        { error "samplesheet missing 'sample' column" }
-            if (!row.r1 || !row.r2) { error "samplesheet missing 'r1' or 'r2' column" }
+            if (!row.sample)    { error "samplesheet missing 'sample' column" }
+            if (!row.r1)        { error "samplesheet missing 'r1' column" }
             def meta = [
-                sample: row.sample,
-                group:  row.group ?: 'unknown'
+                sample:     row.sample,
+                group:      row.group ?: 'unknown',
+                single_end: row.r2 ? false : true 
             ]
             [meta, [file(row.r1), file(row.r2)]]
         }
 
     // ========================================================================
-    // Step 2: Preprocessing (Fastp + Bowtie2 --fr + strand split)
+    // Step 2: preprocess
     // ========================================================================
-    preprocess(read_ch, params.adapter ?: 'I', config_ch)
+    preprocess(read_ch, params.adapter ?: 'I')
 
+    // ========================================================================
+    // Step 3: alignment
+    // ========================================================================
+    align_bowtie2(preprocess.out.trimmed_reads, config_ch.bowtie2_index, config_ch.genome_fasta)
+    
+    
+    // ========================================================================
+    // Step 4: quantification
+    // ========================================================================
+    
+    
     // ========================================================================
     // Step 3: Quantification (full gene + TSS + gene body, single file)
     // ========================================================================

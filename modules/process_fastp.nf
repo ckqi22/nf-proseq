@@ -1,8 +1,8 @@
-process process_cutadapt_output {
+process PROCESS_FASTP {
     tag "${meta.sample}"
 
     input:
-    tuple val(meta), path(json_files)   // 来自 cutadapt 进程的所有 JSON 文件列表
+    tuple val(meta), path(json_files)
 
     output:
     path "*.{tiff,pdf}", emit: base_quality_plot

@@ -9,13 +9,15 @@
 name: "PRO-seq"
 projectNo.: ""
 institute: ""
-species: human
+species: mouse
 build: null
 instrument_model: Illumina_NovaSeq_6000
 sample_type: cell
 sample_number: 2
 gtf:
 genome_fasta:
+strandedness: 'forward'   # 可选: unstranded, forward, reverse. forward: read 的方向与目标 RNA/转录方向一致
+paired_orientation: "fr"  # 可选：fr, rf, ff. -1, -2 mates align fw/rev, rev/fw, fw/fw
 
 # ---- Spike-in 配置（无 spike-in 则留空）----
 spike_genome: "dm6"
@@ -29,7 +31,7 @@ umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
 
 # ---- 质控阈值 ----
 threshold:
-  data_amount: 0.8G            # 双端数据量阈值
+  data_amount: 1.5G            # 双端数据量阈值
   data_percentage: 0.2         # 容许偏差比例
   duplicate_rate: 0.6          # 重复率阈值
   mapping_rate: 0.2            # 比对率阈值
@@ -49,7 +51,7 @@ metagene:
   tes_window: 3000             # TES ± 窗口大小（bp）
 
 # ---- BigWig 参数 ---- 
-effective_genome_size = 2913022398  # hg38 effective genome size for RPGC normalization
+#effective_genome_size = 2913022398  # hg38 effective genome size for RPGC normalization
 
 
 # ---- 差异分析 ----
