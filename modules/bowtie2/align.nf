@@ -32,6 +32,10 @@ process BOWTIE2_ALIGN {
     """
     source /workplace/hanguojun/mambaforge/bin/activate snakemake
 
+    # NOTE: --no-discordant / --no-mixed 已禁用（原命令里这两个 flag 会被触发
+    #   bowtie2 输出 SEQ/QUAL 长度不一致的 SAM 记录，导致
+    #   `samtools view` 报 [E::sam_parse1] SEQ and QUAL are of different length。
+    #   需要恢复时把下面两个 flag 加回 --no-unal 之后即可。）
     bowtie2 \\
         -x ${index} \\
         ${reads_args} \\
@@ -39,8 +43,6 @@ process BOWTIE2_ALIGN {
         ${strand_args} \\
         --very-sensitive \\
         --no-unal \\
-        --no-discordant \\
-        --no-mixed \\
         2> >(tee ${meta.sample}_summary_bowtie2.txt) | \\
     samtools view  --threads 10 -bS - | \\
     samtools sort  --threads 8 -o ${meta.sample}.bam && \\
