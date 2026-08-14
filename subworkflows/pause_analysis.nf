@@ -1,41 +1,57 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: pause_analysis
-// Extract TSS and gene body columns → combined matrices → pausing index.
+// Pausing index (length-normalized): TSS / gene body.
+//   1. convert featureCounts -> clean matrices
+//   2. compute PI table (pausing_index.R)
+//   3. boxplot by group + differential pausing (separate scripts)
 //
 
-include { extract_region as extract_tss_region} from '../modules/extract_region.nf'
-include { extract_region as extract_gb_region} from '../modules/extract_region.nf'
-include { pausing_index   } from '../modules/pausing_index.nf'
+include { FEATURECOUNTS_TO_MATRIX as TSS_MATRIX } from '../modules/featurecounts_to_matrix.nf'
+include { FEATURECOUNTS_TO_MATRIX as GB_MATRIX }  from '../modules/featurecounts_to_matrix.nf'
+include { pausing_index        } from '../modules/pausing_index.nf'
+include { pausing_boxplot      } from '../modules/pausing_boxplot.nf'
+include { pausing_differential } from '../modules/pausing_differential.nf'
 
 workflow pause_analysis {
     take:
-    counts_files       // channel: per-sample proseq_counts.txt files
-    groups_config      // channel: val(map)
+    tss_counts        // channel: path(tss.featureCounts.txt)
+    genebody_counts   // channel: path(genebody.featureCounts.txt)
+    groups_config     // channel: val(map) — group_name -> "sample1, sample2"
 
     main:
-    all_files = counts_files.collect()
+    TSS_MATRIX(tss_counts)
+    GB_MATRIX(genebody_counts)
 
-    // Generate groups YAML
+    pausing_index(TSS_MATRIX.out.matrix, GB_MATRIX.out.matrix)
+
+    // Build the groups YAML / comparisons CSV as plain strings (a val channel).
+    // NOTE: never call file() / write files inside a .map closure — that triggers
+    // a DataflowExpression.invokeMethod StackOverflowError. The actual file is
+    // written inside each process' script block instead.
     groups_yml = groups_config.map { groups ->
         def lines = []
         groups.each { groupName, sampleList ->
-            lines << "${groupName}: ${sampleList}"
+            def samples = sampleList.toString().split(',').collect { it.trim() }.findAll { it }
+            lines << "${groupName}:"
+            samples.each { lines << "  - ${it}" }
         }
-        if (lines.isEmpty()) { lines << "all: unknown" }
-        def f = file("${workDir}/pause_groups.yml")
-        f.text = lines.join('\n')
-        return f
+        return lines.join('\n')
     }
 
-    // Extract TSS and gene body matrices
-    tss_mat = extract_tss_region(all_files, "_tss")
-    gb_mat  = extract_gb_region(all_files, "_gene_body")
+    // TODO(comparisons): build group1,group2 CSV from params.compared_groups.
+    // Header-only CSV for now -> no differential comparisons.
+    comparisons_csv = groups_config.map { _ -> "group1,group2\n" }
 
-    pausing_index(tss_mat.out.matrix, gb_mat.out.matrix, groups_yml, Channel.empty())
+    // Multicast the single PI table and groups to the two downstream analyses.
+    pausing_index.out.pi.into { pi_all_ch; pi_box_ch; pi_diff_ch }
+    groups_yml.into { groups_box_ch; groups_diff_ch }
+
+    pausing_boxplot(pi_box_ch, groups_box_ch)
+    pausing_differential(pi_diff_ch, groups_diff_ch, comparisons_csv)
 
     emit:
-    pi_all     = pausing_index.out.pi_all
-    pi_boxplot = pausing_index.out.pi_boxplot
-    pi_diff    = pausing_index.out.pi_diff
+    pi_all     = pi_all_ch
+    pi_boxplot = pausing_boxplot.out.pdf
+    pi_diff    = pausing_differential.out.diff
 }

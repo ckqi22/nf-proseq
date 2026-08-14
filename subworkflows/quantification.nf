@@ -1,26 +1,24 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: quantification
-// Three regions per gene: full gene / TSS pause / gene body
-// All in one output file per sample.
+// Two regions per gene: TSS pause / gene body
+// featureCounts runs once per region with all samples' BAMs together.
 //
 
-include {  }
-include { FEATURECOUNTS } from '../modules/featurecounts.nf'
+include { FEATURECOUNTS as FEATURECOUNTS_TSS } from '../modules/featurecounts.nf'
+include { FEATURECOUNTS as FEATURECOUNTS_GENEBODY } from '../modules/featurecounts.nf'
 
 workflow quantification {
     take:
-    bam_ch            // channel: tuple val(meta), path(bam)
-    config_ch         // channel: val(config)
+    bam_ch            // channel: tuple val(meta), path(bams) — all samples' BAMs (collected in main.nf)
+    tss_saf           // channel: path(tss.saf)
+    genebody_saf      // channel: path(genebody.saf)
 
     main:
-    quant_input_ch = bam_ch
-        .combine(config_ch)
-        .map { meta, bam, cfg -> [meta, bam, cfg] }
-
-    featurecounts_proseq(quant_input_ch)
+    FEATURECOUNTS_TSS(bam_ch, tss_saf, 'tss')
+    FEATURECOUNTS_GENEBODY(bam_ch, genebody_saf, 'genebody')
 
     emit:
-    counts  = featurecounts_proseq.out.counts
-    summary = featurecounts_proseq.out.summary
+    tss_counts      = FEATURECOUNTS_TSS.out.counts
+    genebody_counts = FEATURECOUNTS_GENEBODY.out.counts
 }

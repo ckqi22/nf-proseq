@@ -20,7 +20,8 @@ include { parse_config      } from './modules/parse_config.nf'
 include { preprocess        } from './subworkflows/preprocess.nf'
 include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
 
-include { quantify          } from './subworkflows/quantify.nf'
+include { prepare_genome    } from './subworkflows/prepare_genome.nf'
+include { quantification    } from './subworkflows/quantification.nf'
 include { pause_analysis    } from './subworkflows/pause_analysis.nf'
 include { metagene_analysis } from './subworkflows/metagene_analysis.nf'
 
@@ -47,6 +48,10 @@ workflow {
         return config
     }
 
+    // Resolve reference genome (fasta + bowtie2 index) and prepare
+    // TSS + gene body SAF annotations from the reference GTF
+    prepare_genome(config_ch)
+
     // ========================================================================
     // Step 1: Read samplesheet
     // ========================================================================
@@ -71,75 +76,74 @@ workflow {
     // ========================================================================
     // Step 3: alignment
     // ========================================================================
-    align_bowtie2(preprocess.out.trimmed_reads, config_ch.bowtie2_index, config_ch.genome_fasta)
-    
-    
+    align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
+        
     // ========================================================================
-    // Step 4: quantification
+    // Step 4: quantification (full gene + TSS + gene body, single file)
     // ========================================================================
-    
-    
-    // ========================================================================
-    // Step 3: Quantification (full gene + TSS + gene body, single file)
-    // ========================================================================
-    quantify(preprocess.out.bam, config_ch)
+    bam_list = align_bowtie2.out.bam
+        .map { meta, bam -> [meta, bam] }
+        .collect()
+        .map { items -> [items[0][0], items.collect { it[1] }] }
+
+    quantification(bam_list, prepare_genome.out.tss_saf, prepare_genome.out.genebody_saf)
 
     // ========================================================================
-    // Step 4: Pausing index (TSS / gene body)
+    // Step 5: Pausing index (TSS / gene body)
     // ========================================================================
-    groups_config_ch = Channel.value(params.group ?: [:])
-    pause_analysis(quantify.out.counts, groups_config_ch)
+    groups_config_ch = Channel.value(params.group ?: [:]).view()
+    // pause_analysis(quantification.out.tss_counts, quantification.out.genebody_counts, groups_config_ch)
 
     // ========================================================================
-    // Step 5: Metagene (TSS/TES profiles via deepTools)
+    // Step 6: Metagene (TSS/TES profiles via deepTools)
     // ========================================================================
-    plus_bam_list = preprocess.out.strand_bams
-        .map { _meta, pbam, _mbam -> pbam }
-        .collectFile(name: 'plus_bams.txt', newLine: true) { "${it}\n" }
+    // plus_bam_list = preprocess.out.strand_bams
+    //     .map { _meta, pbam, _mbam -> pbam }
+    //     .collectFile(name: 'plus_bams.txt', newLine: true) { "${it}\n" }
 
-    minus_bam_list = preprocess.out.strand_bams
-        .map { _meta, _pbam, mbam -> mbam }
-        .collectFile(name: 'minus_bams.txt', newLine: true) { "${it}\n" }
+    // minus_bam_list = preprocess.out.strand_bams
+    //     .map { _meta, _pbam, mbam -> mbam }
+    //     .collectFile(name: 'minus_bams.txt', newLine: true) { "${it}\n" }
 
-    metagene_analysis(plus_bam_list, minus_bam_list, config_ch)
+    // metagene_analysis(plus_bam_list, minus_bam_list, config_ch)
 
     // ========================================================================
     // Publish results to output directories
     // ========================================================================
     publish:
-    cutadapt_json      = preprocess.out.cutadapt_json
-    cutadapt_html      = preprocess.out.cutadapt_html
-    cutadapt_log       = preprocess.out.cutadapt_log
+    fastp_json         = preprocess.out.fastp_json
+    fastp_html         = preprocess.out.fastp_html
+    fastp_log          = preprocess.out.fastp_log
     trimmed_reads      = preprocess.out.trimmed_reads
     base_quality_plot  = preprocess.out.base_quality_plot
     statistics         = preprocess.out.statistics
     statistics_log     = preprocess.out.statistics_log
 
-    bam                = preprocess.out.bam
-    bai                = preprocess.out.bai
-    genomeRate         = preprocess.out.genomeRate
-    alignment_log      = preprocess.out.alignment_log
+    bam                = align_bowtie2.out.bam
+    bai                = align_bowtie2.out.bai
+    genomeRate         = align_bowtie2.out.genomeRate
+    alignment_log      = align_bowtie2.out.alignment_log
 
-    counts             = quantify.out.counts
-    summary            = quantify.out.summary
+    tss_counts         = quantification.out.tss_counts
+    genebody_counts    = quantification.out.genebody_counts
 
-    pi_all             = pause_analysis.out.pi_all
-    pi_boxplot         = pause_analysis.out.pi_boxplot
-    pi_diff            = pause_analysis.out.pi_diff
+    // pi_all             = pause_analysis.out.pi_all
+    // pi_boxplot         = pause_analysis.out.pi_boxplot
+    // pi_diff            = pause_analysis.out.pi_diff
 
-    tss_plus_pdf       = metagene_analysis.out.tss_plus_pdf
-    tss_minus_pdf      = metagene_analysis.out.tss_minus_pdf
-    tes_plus_pdf       = metagene_analysis.out.tes_plus_pdf
-    tes_minus_pdf      = metagene_analysis.out.tes_minus_pdf
+    // tss_plus_pdf       = metagene_analysis.out.tss_plus_pdf
+    // tss_minus_pdf      = metagene_analysis.out.tss_minus_pdf
+    // tes_plus_pdf       = metagene_analysis.out.tes_plus_pdf
+    // tes_minus_pdf      = metagene_analysis.out.tes_minus_pdf
 }
 
 // ------------------------------------------------------------------
 // Output directive
 // ------------------------------------------------------------------
 output {
-    cutadapt_json     { path "03.Data_QC/" }
-    cutadapt_html     { path "03.Data_QC/" }
-    cutadapt_log      { path "03.Data_QC/" }
+    fastp_json        { path "03.Data_QC/" }
+    fastp_html        { path "03.Data_QC/" }
+    fastp_log         { path "03.Data_QC/" }
     trimmed_reads     { path "03.Data_QC/" }
     base_quality_plot { path "03.Data_QC/" }
     statistics        { path "03.Data_QC/" }
@@ -150,15 +154,15 @@ output {
     genomeRate        { path "04.Alignment/" }
     alignment_log     { path "04.Alignment/" }
 
-    counts            { path "05.Quantification/" }
-    summary           { path "05.Quantification/" }
+    tss_counts        { path "05.Quantification/" }
+    genebody_counts   { path "05.Quantification/" }
 
-    pi_all            { path "06.Pausing_Index/" }
-    pi_boxplot        { path "06.Pausing_Index/" }
-    pi_diff           { path "06.Pausing_Index/" }
+    // pi_all            { path "06.Pausing_Index/" }
+    // pi_boxplot        { path "06.Pausing_Index/" }
+    // pi_diff           { path "06.Pausing_Index/" }
 
-    tss_plus_pdf      { path "07.Metagene/" }
-    tss_minus_pdf     { path "07.Metagene/" }
-    tes_plus_pdf      { path "07.Metagene/" }
-    tes_minus_pdf     { path "07.Metagene/" }
+    // tss_plus_pdf      { path "07.Metagene/" }
+    // tss_minus_pdf     { path "07.Metagene/" }
+    // tes_plus_pdf      { path "07.Metagene/" }
+    // tes_minus_pdf     { path "07.Metagene/" }
 }

@@ -36,31 +36,34 @@ def main():
     if species_index not in info_config:
         sys.exit(f"ERROR: Section '{species_index}' not found in information_config")
     
-    # 提取所需键值
-    try:
-        bowtie2_index = info_config[species_index]['bowtie2_index']
-        gtf = info_config[species_index]['gtf']
-        gene_annotation = info_config[species_index]['gene_annotation']
-        rrna_index = info_config[species_index]['rRNA_index']
-    except KeyError as e:
-        sys.exit(f"ERROR: Missing key {e} in section '{species_index}'")
-    
-    # 如果命令行提供了 --gtf，则覆盖
+    # 提取所需键值（gtf 必需，其余可选：缺失输出空串，避免部分 section 缺键导致退出）
+    gtf = info_config[species_index].get('gtf', '')
+    if not gtf and not args.gtf:
+        sys.exit(f"ERROR: Missing key 'gtf' in section '{species_index}'")
+
+    bowtie2_index  = info_config[species_index].get('bowtie2_index', '')
+    gene_annotation = info_config[species_index].get('gene_annotation', '')
+    rrna_index     = info_config[species_index].get('rRNA_index', '')
+    genome_fasta   = info_config[species_index].get('genome_fasta', '')
+
+    # 命令行覆盖（用户指定路径优先于数据库）
     if args.gtf:
         gtf = args.gtf
+    if args.genome_fasta:
+        genome_fasta = args.genome_fasta
 
     # 输出键值对（一行一个）
     print(f"bowtie2_index: {bowtie2_index}")
     print(f"gtf: {gtf}")
     print(f"gene_annotation: {gene_annotation}")
     print(f"rRNA_index: {rrna_index}")
-
-    # 可选：输出 GENOME_FASTA 如果提供
-    if args.genome_fasta:
-        print(f"genome_fasta: {args.genome_fasta}")
+    print(f"genome_fasta: {genome_fasta}")
 
     # 也可以输出 BUILD 供参考（如果需要）
     print(f"build: {species_index}")
+
+    # TODO(spike-in): 未来在此解析 spike 拼接（主基因组 + spike fasta/gtf 合并），
+    # 输出 combined fasta/gtf 路径，供 prepare_genome.nf 的 CONCAT 扩展点使用。
 
 if __name__ == "__main__":
     main()

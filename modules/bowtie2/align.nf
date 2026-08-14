@@ -3,8 +3,7 @@ process BOWTIE2_ALIGN {
 
     input:
     tuple val(meta), path(reads)
-    tuple val(meta2), path(index)
-    val config
+    tuple val(meta2), val(index)
 
 
     output:

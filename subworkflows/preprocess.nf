@@ -6,7 +6,7 @@
 //
 
 include { FASTQC            } from '../modules/fastqc.nf'
-include { FASTP             } from '../modules/cutadapt.nf'
+include { FASTP             } from '../modules/fastp.nf'
 include { PROCESS_FASTP     } from '../modules/process_fastp.nf'
 
 workflow preprocess {
