@@ -19,7 +19,7 @@ process FASTP {
         args = "" 
     }
     if (meta.single_end) {
-        reads_args          = "--in1 ${reads[0]}"
+        reads_args          = "--in1 ${reads}"
         trimmed_reads_args  = "--out1 ${meta.sample}_R1_trimmed.fastq.gz"
         detect_adapter_args = ""
     } else {

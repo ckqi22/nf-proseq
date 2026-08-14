@@ -34,8 +34,8 @@ workflow prepare_genome {
     //   before SAF/index generation.
 
     emit:
-    index
-    fasta
-    tss_saf
-    genebody_saf
+    index           = index
+    fasta           = fasta
+    tss_saf         = tss_saf
+    genebody_saf    = genebody_saf
 }

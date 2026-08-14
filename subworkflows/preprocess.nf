@@ -23,6 +23,7 @@ workflow preprocess {
     // ------------------------------------------------------------------
     // Step 2: Adapter trimming and read QC with cutadapt (fastp wrapper)
     // ------------------------------------------------------------------
+    read_ch.view()
     FASTP(read_ch, adapter_type)
 
     // ------------------------------------------------------------------
@@ -32,6 +33,8 @@ workflow preprocess {
 
     emit:
     // Cutadapt / QC outputs
+    fastqc_zip          = FASTQC.out.zip
+    fastqc_html         = FASTQC.out.html
     fastp_json          = FASTP.out.json
     fastp_html          = FASTP.out.html
     fastp_log           = FASTP.out.log

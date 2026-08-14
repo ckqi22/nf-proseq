@@ -76,6 +76,8 @@ workflow {
     // ========================================================================
     // Step 3: alignment
     // ========================================================================
+    prepare_genome.out.index.view()
+    prepare_genome.out.fasta.view()
     align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
         
     // ========================================================================
@@ -91,7 +93,7 @@ workflow {
     // ========================================================================
     // Step 5: Pausing index (TSS / gene body)
     // ========================================================================
-    groups_config_ch = Channel.value(params.group ?: [:]).view()
+    // groups_config_ch = Channel.value(params.group ?: [:])
     // pause_analysis(quantification.out.tss_counts, quantification.out.genebody_counts, groups_config_ch)
 
     // ========================================================================
@@ -111,6 +113,8 @@ workflow {
     // Publish results to output directories
     // ========================================================================
     publish:
+    fastqc_zip         = preprocess.out.fastqc_zip
+    fastqc_html        = preprocess.out.fastqc_html
     fastp_json         = preprocess.out.fastp_json
     fastp_html         = preprocess.out.fastp_html
     fastp_log          = preprocess.out.fastp_log
@@ -119,13 +123,13 @@ workflow {
     statistics         = preprocess.out.statistics
     statistics_log     = preprocess.out.statistics_log
 
-    bam                = align_bowtie2.out.bam
-    bai                = align_bowtie2.out.bai
-    genomeRate         = align_bowtie2.out.genomeRate
-    alignment_log      = align_bowtie2.out.alignment_log
+    // bam                = align_bowtie2.out.bam
+    // bai                = align_bowtie2.out.bai
+    // genomeRate         = align_bowtie2.out.genomeRate
+    // alignment_log      = align_bowtie2.out.alignment_log
 
-    tss_counts         = quantification.out.tss_counts
-    genebody_counts    = quantification.out.genebody_counts
+    // tss_counts         = quantification.out.tss_counts
+    // genebody_counts    = quantification.out.genebody_counts
 
     // pi_all             = pause_analysis.out.pi_all
     // pi_boxplot         = pause_analysis.out.pi_boxplot
@@ -141,6 +145,8 @@ workflow {
 // Output directive
 // ------------------------------------------------------------------
 output {
+    fastqc_zip        { path "02.fastqc/" }
+    fastqc_html       { path "02.fastqc/" }
     fastp_json        { path "03.Data_QC/" }
     fastp_html        { path "03.Data_QC/" }
     fastp_log         { path "03.Data_QC/" }
@@ -149,13 +155,13 @@ output {
     statistics        { path "03.Data_QC/" }
     statistics_log    { path "03.Data_QC/" }
 
-    bam               { path "04.Alignment/" }
-    bai               { path "04.Alignment/" }
-    genomeRate        { path "04.Alignment/" }
-    alignment_log     { path "04.Alignment/" }
+    // bam               { path "04.Alignment/" }
+    // bai               { path "04.Alignment/" }
+    // genomeRate        { path "04.Alignment/" }
+    // alignment_log     { path "04.Alignment/" }
 
-    tss_counts        { path "05.Quantification/" }
-    genebody_counts   { path "05.Quantification/" }
+    // tss_counts        { path "05.Quantification/" }
+    // genebody_counts   { path "05.Quantification/" }
 
     // pi_all            { path "06.Pausing_Index/" }
     // pi_boxplot        { path "06.Pausing_Index/" }
