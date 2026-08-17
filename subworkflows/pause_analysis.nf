@@ -2,56 +2,43 @@
 //
 // SUBWORKFLOW: pause_analysis
 // Pausing index (length-normalized): TSS / gene body.
-//   1. convert featureCounts -> clean matrices
-//   2. compute PI table (pausing_index.R)
-//   3. boxplot by group + differential pausing (separate scripts)
+//   Inputs are the merged count matrices produced by `quantification`.
+//   Groups come from the samplesheet.
+//   1. compute PI table (pausing_index.R)
+//   2. boxplot by group (pausing_boxplot.R)
+//
+//   NOTE: differential analysis no longer lives here — it moved to
+//   subworkflows/diff.nf (DESeq2 on gene body counts).
 //
 
-include { FEATURECOUNTS_TO_MATRIX as TSS_MATRIX } from '../modules/featurecounts_to_matrix.nf'
-include { FEATURECOUNTS_TO_MATRIX as GB_MATRIX }  from '../modules/featurecounts_to_matrix.nf'
-include { pausing_index        } from '../modules/pausing_index.nf'
-include { pausing_boxplot      } from '../modules/pausing_boxplot.nf'
-include { pausing_differential } from '../modules/pausing_differential.nf'
+include { pausing_index   } from '../modules/pause_analysis/pausing_index.nf'
+include { pausing_boxplot } from '../modules/pause_analysis/pausing_boxplot.nf'
 
 workflow pause_analysis {
     take:
-    tss_counts        // channel: path(tss.featureCounts.txt)
-    genebody_counts   // channel: path(genebody.featureCounts.txt)
-    groups_config     // channel: val(map) — group_name -> "sample1, sample2"
+    tss_matrix        // channel: path(tss.matrix.txt)  — gene_id, length, <samples>
+    genebody_matrix   // channel: path(genebody.matrix.txt)
+    groups_config     // channel: val(map) — group_name -> [samples] (from samplesheet)
 
     main:
-    TSS_MATRIX(tss_counts)
-    GB_MATRIX(genebody_counts)
+    pausing_index(tss_matrix, genebody_matrix)
 
-    pausing_index(TSS_MATRIX.out.matrix, GB_MATRIX.out.matrix)
-
-    // Build the groups YAML / comparisons CSV as plain strings (a val channel).
+    // Build the groups YAML as a plain string (a val channel).
     // NOTE: never call file() / write files inside a .map closure — that triggers
     // a DataflowExpression.invokeMethod StackOverflowError. The actual file is
     // written inside each process' script block instead.
     groups_yml = groups_config.map { groups ->
         def lines = []
-        groups.each { groupName, sampleList ->
-            def samples = sampleList.toString().split(',').collect { it.trim() }.findAll { it }
+        groups.each { groupName, samples ->
             lines << "${groupName}:"
-            samples.each { lines << "  - ${it}" }
+            samples.each { s -> lines << "  - ${s}" }
         }
         return lines.join('\n')
     }
 
-    // TODO(comparisons): build group1,group2 CSV from params.compared_groups.
-    // Header-only CSV for now -> no differential comparisons.
-    comparisons_csv = groups_config.map { _ -> "group1,group2\n" }
-
-    // Multicast the single PI table and groups to the two downstream analyses.
-    pausing_index.out.pi.into { pi_all_ch; pi_box_ch; pi_diff_ch }
-    groups_yml.into { groups_box_ch; groups_diff_ch }
-
-    pausing_boxplot(pi_box_ch, groups_box_ch)
-    pausing_differential(pi_diff_ch, groups_diff_ch, comparisons_csv)
+    pausing_boxplot(pausing_index.out.pi, groups_yml)
 
     emit:
-    pi_all     = pi_all_ch
+    pi_all     = pausing_index.out.pi
     pi_boxplot = pausing_boxplot.out.pdf
-    pi_diff    = pausing_differential.out.diff
 }

@@ -1,7 +1,7 @@
 process parse_config {
 
     output:
-    stdout 
+    path "config.txt"
 
     script:
     """
@@ -11,6 +11,7 @@ process parse_config {
     --species ${params.species} \\
     ${params.build ? "--build ${params.build}" : ""} \\
     ${params.gtf ? "--gtf ${params.gtf}" : ""} \\
-    ${params.genome_fasta ? "--genome_fasta ${params.genome_fasta}" : ""}
+    ${params.genome_fasta ? "--genome_fasta ${params.genome_fasta}" : ""} \\
+    --output config.txt
     """
 }

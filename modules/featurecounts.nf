@@ -1,4 +1,5 @@
 process FEATURECOUNTS {
+    tag "${meta.sample}"
 
     input:
     tuple val(meta), path(bams)
@@ -33,7 +34,7 @@ process FEATURECOUNTS {
         ${type_args} \\
         ${attr_args} \\
         -s ${strandedness} \\
-        -o ${type}.featureCounts.txt \\
+        -o ${meta.sample}_${type}.featureCounts.txt \\
         ${bams.join(' ')}
     """
 }

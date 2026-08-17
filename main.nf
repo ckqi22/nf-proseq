@@ -10,8 +10,10 @@
 //   1. Fastp QC + adapter trimming
 //   2. Bowtie2 --fr alignment + strand split
 //   3. featureCounts: full gene / TSS pause / gene body (3 regions per gene)
-//   4. Pausing index (TSS / gene body)
-//   5. Metagene TSS/TES profiles (deepTools)
+//   4. Pausing index (TSS / gene body) + boxplot
+//   5. Differential expression (DESeq2 on gene body counts)
+//   6. Pol II active-site single-base distribution (bedtools) + bigWigs (deepTools)
+//   7. Metagene TSS/TES profiles (deepTools)
 //
 // Samplesheet: sample,group,r1,r2
 // ============================================================
@@ -23,7 +25,9 @@ include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
 include { prepare_genome    } from './subworkflows/prepare_genome.nf'
 include { quantification    } from './subworkflows/quantification.nf'
 include { pause_analysis    } from './subworkflows/pause_analysis.nf'
-include { metagene_analysis } from './subworkflows/metagene_analysis.nf'
+include { tss_meta          } from './subworkflows/tss_meta.nf'
+include { diff              } from './subworkflows/diff.nf'
+include { POL2_FIVEPRIME    } from './modules/bedtools/pol2_fiveprime.nf'
 
 workflow {
 
@@ -31,19 +35,20 @@ workflow {
     // ========================================================================
     // Step 0: Parse genome configuration
     // ========================================================================
-    config_ch = parse_config().map { text ->
+    config_ch = parse_config().map { cfg_file ->
         def config = [:]
-        text.split('\n').each { line ->
+        cfg_file.text.split('\n').each { line ->
             def p = line.split(': ', 2)
             if (p.size() >= 2) { config[p[0].trim()] = p[1].trim() }
         }
         println "============================================"
         println " PRO-seq pipeline — config parsed"
-        println " genome_fasta  : ${config.genome_fasta}"
-        println " bowtie2_index : ${config.bowtie2_index}"
-        println " gtf           : ${config.gtf}"
-        println " build         : ${config.build}"
-        println " sample_sheet  : ${params.sample_sheet}"
+        println " build           : ${config.build}"
+        println " genome_fasta    : ${config.genome_fasta}"
+        println " bowtie2_index   : ${config.bowtie2_index}"
+        println " gtf             : ${config.gtf}"
+        println " gene_annotation : ${config.gene_annotation}"
+        println " sample_sheet    : ${params.sample_sheet}"
         println "============================================"
         return config
     }
@@ -65,7 +70,7 @@ workflow {
                 group:      row.group ?: 'unknown',
                 single_end: row.r2 ? false : true 
             ]
-            [meta, [file(row.r1), file(row.r2)]]
+            [meta, [row.r1, row.r2]]
         }
 
     // ========================================================================
@@ -76,38 +81,59 @@ workflow {
     // ========================================================================
     // Step 3: alignment
     // ========================================================================
-    prepare_genome.out.index.view()
-    prepare_genome.out.fasta.view()
     align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
         
     // ========================================================================
-    // Step 4: quantification (full gene + TSS + gene body, single file)
+    // Step 4: quantification (per-sample featureCounts -> merged matrices)
+    //   - one featureCounts run per sample per region (handles mixed SE/PE)
+    //   - quantification merges per-sample counts into tss/genebody matrices
     // ========================================================================
-    bam_list = align_bowtie2.out.bam
-        .map { meta, bam -> [meta, bam] }
-        .collect()
-        .map { items -> [items[0][0], items.collect { it[1] }] }
-
-    quantification(bam_list, prepare_genome.out.tss_saf, prepare_genome.out.genebody_saf)
+    quantification(align_bowtie2.out.bam, prepare_genome.out.tss_saf, prepare_genome.out.genebody_saf)
+    
 
     // ========================================================================
-    // Step 5: Pausing index (TSS / gene body)
+    // Step 5: Pausing index (TSS / gene body) + boxplot
+    //   Groups come from the samplesheet 'group' column.
     // ========================================================================
-    // groups_config_ch = Channel.value(params.group ?: [:])
-    // pause_analysis(quantification.out.tss_counts, quantification.out.genebody_counts, groups_config_ch)
+    // Re-read the samplesheet (a tiny local CSV) to derive group -> [samples].
+    // Avoids multicasting read_ch with `into`, which the DSL2 compiler failed to
+    // resolve as a channel operator ("Missing process or function into").
+    groups_config_ch = Channel.fromPath(params.sample_sheet)
+        .splitCsv(header: true)
+        .map { row -> [row.group ?: 'unknown', row.sample] }
+        .toList()
+        .map { pairs ->
+            def groups = [:]
+            pairs.each { group, sample ->
+                if (!groups.containsKey(group)) groups[group] = []
+                groups[group] << sample
+            }
+            return groups
+        }
+
+    pause_analysis(quantification.out.tss_matrix, quantification.out.genebody_matrix, groups_config_ch)
 
     // ========================================================================
-    // Step 6: Metagene (TSS/TES profiles via deepTools)
+    // Step 5b: Differential expression (DESeq2 on gene body counts)
+    //   groups come from the samplesheet; comparisons from params.compared_groups;
+    //   annotation from the database config (gene_annotation).
     // ========================================================================
-    // plus_bam_list = preprocess.out.strand_bams
-    //     .map { _meta, pbam, _mbam -> pbam }
-    //     .collectFile(name: 'plus_bams.txt', newLine: true) { "${it}\n" }
+    annotation_ch = config_ch.map { it -> it.gene_annotation ?: '' }
 
-    // minus_bam_list = preprocess.out.strand_bams
-    //     .map { _meta, _pbam, mbam -> mbam }
-    //     .collectFile(name: 'minus_bams.txt', newLine: true) { "${it}\n" }
+    diff(quantification.out.genebody_matrix, groups_config_ch, annotation_ch)
 
-    // metagene_analysis(plus_bam_list, minus_bam_list, config_ch)
+    // ========================================================================
+    // Step 5c: Pol II active-site single-base distribution (5' end coverage)
+    //   Per sample: signed + / - bedGraphs (bedtools genomecov).
+    //   bigWig coverage is now produced inside TSS_meta (Step 7).
+    // ========================================================================
+    POL2_FIVEPRIME(align_bowtie2.out.bam)
+
+    // ========================================================================
+    // Step 7: Metagene (TSS profile via deepTools, per-sample)
+    // ========================================================================
+    gtf_ch = config_ch.map { it -> it.gtf }
+    tss_meta(align_bowtie2.out.bam, align_bowtie2.out.bai, gtf_ch)
 
     // ========================================================================
     // Publish results to output directories
@@ -123,22 +149,28 @@ workflow {
     statistics         = preprocess.out.statistics
     statistics_log     = preprocess.out.statistics_log
 
-    // bam                = align_bowtie2.out.bam
-    // bai                = align_bowtie2.out.bai
-    // genomeRate         = align_bowtie2.out.genomeRate
-    // alignment_log      = align_bowtie2.out.alignment_log
+    bam                = align_bowtie2.out.bam
+    bai                = align_bowtie2.out.bai
+    alignRate          = align_bowtie2.out.alignRate
 
-    // tss_counts         = quantification.out.tss_counts
-    // genebody_counts    = quantification.out.genebody_counts
+    tss_counts         = quantification.out.tss_counts
+    genebody_counts    = quantification.out.genebody_counts
+    tss_matrix         = quantification.out.tss_matrix
+    genebody_matrix    = quantification.out.genebody_matrix
 
-    // pi_all             = pause_analysis.out.pi_all
-    // pi_boxplot         = pause_analysis.out.pi_boxplot
-    // pi_diff            = pause_analysis.out.pi_diff
+    pi_all             = pause_analysis.out.pi_all
+    pi_boxplot         = pause_analysis.out.pi_boxplot
 
-    // tss_plus_pdf       = metagene_analysis.out.tss_plus_pdf
-    // tss_minus_pdf      = metagene_analysis.out.tss_minus_pdf
-    // tes_plus_pdf       = metagene_analysis.out.tes_plus_pdf
-    // tes_minus_pdf      = metagene_analysis.out.tes_minus_pdf
+    diff_results       = diff.out.results
+
+    pol2_plus_bedgraph   = POL2_FIVEPRIME.out.plus_bedgraph
+    pol2_minus_bedgraph  = POL2_FIVEPRIME.out.minus_bedgraph
+    pol2_signed_bedgraph = POL2_FIVEPRIME.out.signed_bedgraph
+
+    coverage_bw         = tss_meta.out.bigwig
+
+    tss_meta_matrix     = tss_meta.out.matrix
+    tss_meta_profile    = tss_meta.out.profile
 }
 
 // ------------------------------------------------------------------
@@ -155,20 +187,26 @@ output {
     statistics        { path "03.Data_QC/" }
     statistics_log    { path "03.Data_QC/" }
 
-    // bam               { path "04.Alignment/" }
-    // bai               { path "04.Alignment/" }
-    // genomeRate        { path "04.Alignment/" }
-    // alignment_log     { path "04.Alignment/" }
+    bam               { path "04.Alignment/" }
+    bai               { path "04.Alignment/" }
+    alignRate         { path "04.Alignment/" }
 
-    // tss_counts        { path "05.Quantification/" }
-    // genebody_counts   { path "05.Quantification/" }
+    tss_counts        { path "05.Quantification/" }
+    genebody_counts   { path "05.Quantification/" }
+    tss_matrix        { path "05.Quantification/" }
+    genebody_matrix   { path "05.Quantification/" }
 
-    // pi_all            { path "06.Pausing_Index/" }
-    // pi_boxplot        { path "06.Pausing_Index/" }
-    // pi_diff           { path "06.Pausing_Index/" }
+    pi_all            { path "06.Pausing_Index/" }
+    pi_boxplot        { path "06.Pausing_Index/" }
 
-    // tss_plus_pdf      { path "07.Metagene/" }
-    // tss_minus_pdf     { path "07.Metagene/" }
-    // tes_plus_pdf      { path "07.Metagene/" }
-    // tes_minus_pdf     { path "07.Metagene/" }
+    diff_results      { path "07.Differential_Expression/" }
+
+    pol2_plus_bedgraph   { path "08.Pol2_Active_Site/" }
+    pol2_minus_bedgraph  { path "08.Pol2_Active_Site/" }
+    pol2_signed_bedgraph { path "08.Pol2_Active_Site/" }
+
+    coverage_bw         { path "09.DeepTools_Coverage/" }
+
+    tss_meta_matrix     { path "10.TSS_Metagene/" }
+    tss_meta_profile    { path "10.TSS_Metagene/" }
 }

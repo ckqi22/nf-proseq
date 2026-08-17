@@ -1,6 +1,8 @@
 process pausing_differential {
     tag "pausing_differential"
 
+    container "bio-base:1.0.0"
+
     input:
     path pi_table          // PI table from pausing_index.R
     val  groups_yaml       // YAML text (group_name -> [samples])
@@ -11,7 +13,7 @@ process pausing_differential {
 
     script:
     """
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
+    source /home/ck/miniconda3/bin/activate renv
 
     cat > pause_groups.yml << 'EOF'
     ${groups_yaml}
@@ -21,7 +23,7 @@ process pausing_differential {
     ${comparisons_csv}
     EOF
 
-    ${params.r} ${projectDir}/bin/pausing_differential.R \\
+    Rscript ${projectDir}/bin/pausing_differential.R \\
         --pi ${pi_table} \\
         --groups pause_groups.yml \\
         --comparisons pause_comparisons.csv \\

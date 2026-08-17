@@ -6,7 +6,8 @@ process GTF2SAF {
     path gtf
 
     output:
-    path '*.saf', emit: saf
+    path 'tss.saf', emit: tss_saf
+    path 'genebody.saf', emit: genebody_saf
 
     script:
     """

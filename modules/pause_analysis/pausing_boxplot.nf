@@ -1,6 +1,8 @@
 process pausing_boxplot {
     tag "pausing_boxplot"
 
+    container "bio-base:1.0.0"
+
     input:
     path pi_table          // PI table from pausing_index.R
     val  groups_yaml       // YAML text (group_name -> [samples])
@@ -10,13 +12,13 @@ process pausing_boxplot {
 
     script:
     """
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
+    source /home/ck/miniconda3/bin/activate renv
 
     cat > pause_groups.yml << 'EOF'
-    ${groups_yaml}
-    EOF
+${groups_yaml}
+EOF
 
-    ${params.r} ${projectDir}/bin/pausing_boxplot.R \\
+    Rscript ${projectDir}/bin/pausing_boxplot.R \\
         --pi ${pi_table} \\
         --groups pause_groups.yml \\
         --output Pausing_Index_Boxplot.pdf

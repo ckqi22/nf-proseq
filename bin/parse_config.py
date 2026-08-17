@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--build", help="Build name (e.g., hg38), overrides species mapping")
     parser.add_argument("--gtf", help="Direct GTF file path, overrides config")
     parser.add_argument("--genome_fasta", help="Direct genome FASTA path (optional)")
+    parser.add_argument("--output", help="Write config to this file (key: value lines)")
     args = parser.parse_args()
 
     # -------- 读取 species_config ----------
@@ -53,14 +54,22 @@ def main():
         genome_fasta = args.genome_fasta
 
     # 输出键值对（一行一个）
-    print(f"bowtie2_index: {bowtie2_index}")
-    print(f"gtf: {gtf}")
-    print(f"gene_annotation: {gene_annotation}")
-    print(f"rRNA_index: {rrna_index}")
-    print(f"genome_fasta: {genome_fasta}")
+    lines = [
+        f"build: {species_index}",
+        f"bowtie2_index: {bowtie2_index}",
+        f"gtf: {gtf}",
+        f"gene_annotation: {gene_annotation}",
+        f"rRNA_index: {rrna_index}",
+        f"genome_fasta: {genome_fasta}",
+    ]
+    for line in lines:
+        print(line)
 
-    # 也可以输出 BUILD 供参考（如果需要）
-    print(f"build: {species_index}")
+    # 可选：写入文件，供 pipeline 直接消费
+    if args.output:
+        with open(args.output, 'w') as f:
+            for line in lines:
+                f.write(line + '\n')
 
     # TODO(spike-in): 未来在此解析 spike 拼接（主基因组 + spike fasta/gtf 合并），
     # 输出 combined fasta/gtf 路径，供 prepare_genome.nf 的 CONCAT 扩展点使用。

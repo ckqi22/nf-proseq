@@ -32,11 +32,10 @@ workflow align_bowtie2{
     SAMTOOLS_STAT(bam_bai_ch, fasta_ch)
 
     emit:
-    bam             = BOWTIE2_ALIGN.out.bam
-    bai             = BOWTIE2_ALIGN.out.bai
-    genomeRate      = BOWTIE2_ALIGN.out.genomeRate
-    alignment_log   = BOWTIE2_ALIGN.out.alignment_log
-    flagstat        = SAMTOOLS_STAT.out.flagstat
-    idxstats        = SAMTOOLS_STAT.out.idxstats
-    stats           = SAMTOOLS_STAT.out.stats
+    bam         = BOWTIE2_ALIGN.out.bam
+    bai         = BOWTIE2_ALIGN.out.bai
+    alignRate   = BOWTIE2_ALIGN.out.alignRate
+    flagstat    = SAMTOOLS_STAT.out.flagstat
+    idxstats    = SAMTOOLS_STAT.out.idxstats
+    stats       = SAMTOOLS_STAT.out.stats
 }

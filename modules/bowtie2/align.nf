@@ -9,8 +9,7 @@ process BOWTIE2_ALIGN {
     output:
     tuple val(meta), path("${meta.sample}.bam"), emit: bam
     tuple val(meta), path("${meta.sample}.bam.bai"), emit: bai
-    tuple val(meta), path("${meta.sample}_summary_bowtie2.txt"), emit: genomeRate
-    tuple val(meta), path("z.${meta.sample}_bowtie2_samtools.log"), emit: alignment_log
+    tuple val(meta), path("${meta.sample}_summary_bowtie2.txt"), emit: alignRate
 
 
     script:
@@ -44,8 +43,8 @@ process BOWTIE2_ALIGN {
         --very-sensitive \\
         --no-unal \\
         2> >(tee ${meta.sample}_summary_bowtie2.txt) | \\
-    samtools view  --threads 10 -bS - | \\
-    samtools sort  --threads 8 -o ${meta.sample}.bam && \\
-    samtools index --threads 1 ${meta.sample}.bam > z.${meta.sample}_bowtie2_samtools.log 2>&1
+    samtools view  -@ 2 -bS - | \\
+    samtools sort  -@ 10 -o ${meta.sample}.bam && \\
+    samtools index -@ 1 ${meta.sample}.bam
     """
 }

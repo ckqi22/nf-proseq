@@ -15,10 +15,7 @@ workflow prepare_genome {
     // ------------------------------------------------------------------
     // annotation: TSS + gene body SAF
     // ------------------------------------------------------------------
-    saf = GTF2SAF(config_ch.map { it.gtf }).saf
-
-    tss_saf      = saf.filter { it.name == 'tss.saf' }
-    genebody_saf = saf.filter { it.name == 'genebody.saf' }
+    GTF2SAF(config_ch.map { it -> it.gtf })
 
     // ------------------------------------------------------------------
     // reference: fasta (single file) + bowtie2 index (prebuilt prefix)
@@ -36,6 +33,6 @@ workflow prepare_genome {
     emit:
     index           = index
     fasta           = fasta
-    tss_saf         = tss_saf
-    genebody_saf    = genebody_saf
+    tss_saf         = GTF2SAF.out.tss_saf
+    genebody_saf    = GTF2SAF.out.genebody_saf
 }
