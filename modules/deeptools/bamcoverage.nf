@@ -15,7 +15,8 @@ process BAMCOVERAGE {
         --bam ${bam} \\
         --outFileName ${meta.sample}.bw \\
         --outFileFormat bigwig \\
-        --binSize 50 \\
+        --binSize 1 \\
+        --Offset 1 \\
         --numberOfProcessors 10 \\
         --normalizeUsing RPKM
     """

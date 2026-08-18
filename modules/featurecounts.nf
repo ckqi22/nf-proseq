@@ -33,7 +33,7 @@ process FEATURECOUNTS {
         -a ${annotation} \\
         ${type_args} \\
         ${attr_args} \\
-        -s ${strandedness} \\
+        -s 1 \\
         -o ${meta.sample}_${type}.featureCounts.txt \\
         ${bams.join(' ')}
     """
