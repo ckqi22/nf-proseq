@@ -7,7 +7,7 @@
 //
 
 include { DESEQ2 } from '../modules/diff/deseq2.nf'
-// TODO(edgeR): include { EDGER } from '../modules/diff/edger.nf'
+// include { EDGER } from '../modules/diff/edger.nf'
 
 workflow diff {
     take:
@@ -31,5 +31,5 @@ workflow diff {
     DESEQ2(genebody_matrix, config_yml, annotation)
 
     emit:
-    results = DESEQ2.out.results
+    result = DESEQ2.out.result
 }

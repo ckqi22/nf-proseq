@@ -1,7 +1,7 @@
 process parse_config {
 
     output:
-    path "config.txt"
+    path "config.txt", emit: info
 
     script:
     """

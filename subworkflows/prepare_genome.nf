@@ -2,7 +2,7 @@
 //
 // SUBWORKFLOW: prepare_genome
 // Resolve reference genome (fasta + bowtie2 index) and generate
-// TSS + gene body SAF annotations from the reference GTF.
+// promoter + genebody SAF annotations from the reference GTF.
 //
 
 include { GTF2SAF } from '../modules/gtf2saf.nf'
@@ -13,7 +13,7 @@ workflow prepare_genome {
 
     main:
     // ------------------------------------------------------------------
-    // annotation: TSS + gene body SAF
+    // annotation: promoter + genebody SAF
     // ------------------------------------------------------------------
     GTF2SAF(config_ch.map { it -> it.gtf })
 
@@ -33,6 +33,10 @@ workflow prepare_genome {
     emit:
     index           = index
     fasta           = fasta
-    tss_saf         = GTF2SAF.out.tss_saf
+    promoter_saf         = GTF2SAF.out.promoter_saf
     genebody_saf    = GTF2SAF.out.genebody_saf
+    genebody_bed    = GTF2SAF.out.genebody_bed
+    gene_bed        = GTF2SAF.out.gene_bed
+    plus_genes_bed  = GTF2SAF.out.plus_genes_bed
+    minus_genes_bed = GTF2SAF.out.minus_genes_bed
 }

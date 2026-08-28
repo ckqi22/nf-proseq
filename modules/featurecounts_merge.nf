@@ -5,7 +5,7 @@ process FEATURECOUNTS_MERGE {
 
     input:
     path(counts)          // list of per-sample *.featureCounts.txt (collected)
-    val type              // 'tss' | 'genebody'
+    val type              // promoter | genebody
 
     output:
     path "${type}.matrix.txt", emit: matrix

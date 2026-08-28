@@ -2,28 +2,24 @@
 //
 // SUBWORKFLOW: tss_meta
 // TSS metagene profile via deepTools:
-//   BAM -> bigWig (bamCoverage) -> computeMatrix (reference-point TSS) -> plotProfile
+//   bigWig (来自 pol2_profile, gene-strand) -> computeMatrix (reference-point TSS) -> plotProfile
+//   正链基因、负链基因分别出图：各自一张 TSS profile PDF。
 //
 
-include { BAMCOVERAGE   } from '../modules/deeptools/bamcoverage.nf'
 include { COMPUTEMATRIX } from '../modules/deeptools/computeMatrix.nf'
 include { PLOTPROFILE   } from '../modules/deeptools/plotProfile.nf'
 
 workflow tss_meta {
     take:
-    bam    // channel: tuple(meta, bam)
-    bai    // channel: tuple(meta, bai)
-    gtf    // channel: val(gtf_path)
+    bigwig          // channel: tuple(meta, plus_bw, minus_bw)  gene-strand：plus=+基因信号、minus=-基因信号（取负）
+    gene_bed
 
     main:
-    BAMCOVERAGE(bam.join(bai))
-
-    COMPUTEMATRIX(BAMCOVERAGE.out.bigwig, gtf)
+    COMPUTEMATRIX(bigwig, gene_bed)
 
     PLOTPROFILE(COMPUTEMATRIX.out.matrix)
 
     emit:
-    bigwig  = BAMCOVERAGE.out.bigwig
-    matrix  = COMPUTEMATRIX.out.matrix
-    profile = PLOTPROFILE.out.profile
+    matrix  = COMPUTEMATRIX.out.matrix          // tuple(meta, plus_matrix, minus_matrix)
+    profile = PLOTPROFILE.out.profile           // 两张 PDF：<sample>_plus/minus_TSS_meta.pdf
 }

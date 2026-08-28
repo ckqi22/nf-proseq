@@ -14,6 +14,7 @@ process PLOTPROFILE {
     plotProfile \\
         --matrixFile ${matrix} \\
         --outFileName ${meta.sample}_TSS_meta.pdf \\
+        --perGroup \\
         --plotType lines \\
         --dpi 300
     """

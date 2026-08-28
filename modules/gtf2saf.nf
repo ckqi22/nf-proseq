@@ -6,8 +6,12 @@ process GTF2SAF {
     path gtf
 
     output:
-    path 'tss.saf', emit: tss_saf
+    path 'promoter.saf', emit: promoter_saf
     path 'genebody.saf', emit: genebody_saf
+    path 'genebody.bed', emit: genebody_bed
+    path 'gene.bed', emit: gene_bed
+    path 'plus_genes.bed', emit: plus_genes_bed
+    path 'minus_genes.bed', emit: minus_genes_bed
 
     script:
     """

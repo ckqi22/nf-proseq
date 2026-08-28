@@ -34,7 +34,10 @@ read_counts <- function(f) {
         stop("[featurecounts_merge] expected 1 count column in ", f,
              ", got ", length(cnt_cols))
 
-    sample <- sub("\\.bam$", "", cnt_cols[1], ignore.case = TRUE)
+    # 先剥 R1-only BAM 的 ".r1.bam" 后缀，再剥普通 ".bam"，否则列名会残留
+    # ".r1" 与 samplesheet 的样本名不匹配。
+    sample <- sub("\\.r1\\.bam$", "", cnt_cols[1], ignore.case = TRUE)
+    sample <- sub("\\.bam$", "", sample, ignore.case = TRUE)
     list(gene_id = dt$Geneid, length = dt$Length, sample = sample, count = dt[[cnt_cols[1]]])
 }
 

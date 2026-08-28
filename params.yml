@@ -1,9 +1,6 @@
 # ============================================================
 # PRO-seq — Nextflow 自动化分析流程
 # ============================================================
-# 计划书版本：v1.0 (2026.08.10)
-# 链特异性 dUTP 建库 | Spike-in 校正 | TSS 暂停指数 | Pol II 活性位点
-# ============================================================
 
 # ---- 项目基本信息 ----
 name: "PRO-seq"
@@ -16,8 +13,6 @@ sample_type: cell
 sample_number: 2
 gtf:
 genome_fasta:
-strandedness: 'forward'   # 可选: unstranded, forward, reverse. forward: read 的方向与目标 RNA/转录方向一致
-paired_orientation: "fr"  # 可选：fr, rf, ff. -1, -2 mates align fw/rev, rev/fw, fw/fw
 
 # ---- Spike-in 配置（无 spike-in 则留空）----
 spike_genome: "dm6"
@@ -26,13 +21,15 @@ spike_gtf: null
 
 # ---- 分析参数 ----
 adapter: I                     # [I, UMI, HT, SP 择其一]
+adapter_sequence: "TGGAATTCTCGGGTGCCAAGG"   # Illumina TruSeq small RNA 3' 接头 (RA3)，仅 adapter=I 时生效
 sample_sheet: "samplesheet.csv"
 umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
+normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm/rpkm，逗号分隔，默认两者都做）
 
 # ---- 质控阈值 ----
 threshold:
-  data_amount: 1.5G            # 双端数据量阈值
-  data_percentage: 0.2         # 容许偏差比例
+  data_amount: 9.3G            # 双端数据量阈值
+  data_percentage: 0.8         # 容许偏差比例
   duplicate_rate: 0.6          # 重复率阈值
   mapping_rate: 0.2            # 比对率阈值
   mRNADE_number: 300           # 差异基因数量阈值
@@ -41,7 +38,7 @@ threshold:
 tss:
   upstream: 50                 # TSS 上游窗口（bp），默认 TSS-50bp
   downstream: 300              # TSS 下游窗口（bp），默认 TSS+300bp
-  genebody_offset: 301        # 基因体起始偏移（bp），TSS+301bp 起
+  genebody_offset: 301         # 基因体起始偏移（bp），TSS+301bp 起
   min_gene_length: 800         # 最小基因长度（bp），短于此值不计算 PI
 
 # ---- Metagene 分析 ----
@@ -55,7 +52,7 @@ metagene:
 
 # ---- 差异分析 ----
 diff:
-  tool: "DESeq2"                # edgeR（主）或 DESeq2（备选）
+  tool: "DESeq2"               # edgeR
   fc_cutoff: 1.5               # 默认 Fold Change 阈值
   pval_cutoff: 0.05            # 默认 P-value 阈值
 

@@ -1,4 +1,4 @@
-process SAMTOOLS_STAT {
+process STAT {
     tag "${meta.sample}"
 
     input:
@@ -12,7 +12,6 @@ process SAMTOOLS_STAT {
 
 
     script:
-    def prefix = task.ext.prefix ?: "${meta.id}"
     """
     samtools \\
         flagstat \\

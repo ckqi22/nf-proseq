@@ -1,13 +1,12 @@
 process PROCESS_FASTP {
-    tag "${meta.sample}"
+    tag "process_fastp"
 
     input:
-    tuple val(meta), path(json_files)
+    path json_files
 
     output:
     path "*.{tiff,pdf}", emit: base_quality_plot
-    path "read_statistics.txt", emit: statistics   // 最终汇总文件
-    path "z.read_statistics.log", emit: statistics_log
+    path "read_statistics.txt", emit: statistics
 
     script:
     """
@@ -20,15 +19,13 @@ process PROCESS_FASTP {
         --q30_thres 0.7 \\
         --dup_thres ${params.threshold.duplicate_rate} \\
         --data_amount ${params.threshold.data_amount} \\
-        --data_percentage ${params.threshold.data_percentage} \\
-        > z.read_statistics.log 2>&1
+        --data_percentage ${params.threshold.data_percentage}
 
     ${params.r} /workplace/pipeline/code/base_quality_plot.R \\
         -i ./ \\
         -o ./ \\
         --width 7 --height 7 \\
         --colour "#C85D4D" \\
-        --dpi 600 \\
-        >> z.read_statistics.log 2>&1
+        --dpi 600
     """
 }

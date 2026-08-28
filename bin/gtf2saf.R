@@ -1,10 +1,10 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# gtf2saf.R — Generate TSS and gene body SAF annotations from GTF
+# gtf2saf.R — Generate promoter and genebody SAF annotations from GTF
 #
 # Reads GTF once, outputs two SAF files:
-#   1. TSS window:      TSS-tss_upstream to TSS+tss_downstream
-#   2. Gene body:       TSS+genebody_offset    to TES
+#   1. promoter window:      TSS-tss_upstream    to TSS+tss_downstream
+#   2. genebody window:      TSS+genebody_offset to TES
 #
 # SAF Format (featureCounts requires these exact column names, case-sensitive)
 # GeneID    Chr Start   End Strand
@@ -20,7 +20,7 @@ suppressWarnings(suppressMessages({
 }))
 
 # ── Parse args ──
-argv <- arg_parser("Generate TSS window and gene body SAF annotations from GTF")
+argv <- arg_parser("Generate promoter and genebody SAF annotations from GTF")
 argv <- add_argument(argv, "--gtf",              help = "Path to reference GTF file")
 argv <- add_argument(argv, "--tss_upstream",     help = "TSS upstream window (bp)",    default = 50,  type = "integer")
 argv <- add_argument(argv, "--tss_downstream",   help = "TSS downstream window (bp)",  default = 300, type = "integer")
@@ -34,6 +34,10 @@ read_gtf <- function(gtf_file) {
     gr <- rtracklayer::import(gtf_file, format = "gtf")   # GRanges; attributes parsed into mcols
     gr <- gr[gr$type == "gene"]                           # keep gene-level entries only
     if (is.null(mcols(gr)$gene_id)) stop("GTF missing 'gene_id' attribute")
+    # 读取时即按坐标排序：sortSeqlevels 给自然序 seqlevels（chr1<...<chr10<chrX<chrY<chrM），
+    # sort 再按 start 排 ranges（ignore.strand 保持纯坐标序，不按链分组）。
+    gr <- sortSeqlevels(gr)
+    gr <- sort(gr, ignore.strand = TRUE)
     message("[gtf2saf] ", length(gr), " gene entries")
     return(gr)
 }
@@ -43,23 +47,30 @@ check_inputs <- function(argv) {
     if (!file.exists(argv$gtf)) stop("GTF file not found: ", argv$gtf)
     if (argv$genebody_offset <= argv$tss_downstream)
         stop("genebody_offset (", argv$genebody_offset, ") must be > tss_downstream (",
-             argv$tss_downstream, ") so the gene body does not overlap the TSS window")
+             argv$tss_downstream, ") so the genebody does not overlap the promoter window")
 }
+
+filter_gtf <- function(gtf, genebody_offset) {
+    gene_len <- end(gtf) - start(gtf) + 1
+
+    gene_id <- mcols(gtf)$gene_id
+    ok_id   <- !is.na(gene_id) & gene_id != ""
+
+    keep <- gene_len > genebody_offset + 1 & ok_id
+    message("[gtf2saf] filter_gtf: removed ", sum(!keep),
+            " genes (short gene_len <= ", genebody_offset + 1, " bp, or empty gene_id); ",
+            sum(keep), " kept")
+    gtf[keep, ]
+}
+
 
 # ── Build SAF data.frame from per-strand coordinate vectors ──
 build_saf <- function(gene_ids, chr, strand, plus_start, plus_end, minus_start, minus_end) {
-    saf_start <- saf_end <- integer(length(gene_ids))
-    plus  <- strand == "+"
-    minus <- strand == "-"
-
-    saf_start[plus]  <- plus_start[plus]
-    saf_end[plus]    <- plus_end[plus]
-    saf_start[minus] <- minus_start[minus]
-    saf_end[minus]   <- minus_end[minus]
-
+    plus <- strand == "+"
     data.frame(
         GeneID = gene_ids, Chr = chr,
-        Start  = pmax(saf_start, 1), End = saf_end,
+        Start  = pmax(ifelse(plus, plus_start, minus_start), 1),
+        End    = ifelse(plus, plus_end, minus_end),
         Strand = strand, stringsAsFactors = FALSE
     )
 }
@@ -68,23 +79,18 @@ build_saf <- function(gene_ids, chr, strand, plus_start, plus_end, minus_start, 
 main <- function(argv) {
     check_inputs(argv)
 
-    tss_upstream     <- as.integer(argv$tss_upstream)
-    tss_downstream   <- as.integer(argv$tss_downstream)
-    genebody_offset  <- as.integer(argv$genebody_offset)
+    tss_upstream     <- argv$tss_upstream
+    tss_downstream   <- argv$tss_downstream
+    genebody_offset  <- argv$genebody_offset
 
     gr <- read_gtf(argv$gtf)
+    gr <- filter_gtf(gr, genebody_offset)
 
     gene_ids <- mcols(gr)$gene_id
     chr    <- as.character(seqnames(gr))
     start  <- start(gr)
     end    <- end(gr)
     strand <- as.character(strand(gr))
-
-    # ── Report genes too short for a valid gene body ──
-    gene_len <- end - start + 1
-    n_short  <- sum(gene_len < genebody_offset)
-    message("[gtf2saf] genes shorter than genebody_offset (", genebody_offset,
-            " bp): ", n_short, "/", length(gene_len))
 
     # ── Build TSS SAF ──
     tss_saf <- build_saf(
@@ -102,23 +108,51 @@ main <- function(argv) {
         minus_start = start,                    minus_end = end - genebody_offset
     )
 
-    # ── Filter invalid ──
-    tss_ok <- !is.na(tss_saf$GeneID) & tss_saf$GeneID != "" & tss_saf$Start < tss_saf$End
-    gb_ok  <- !is.na(gb_saf$GeneID)  & gb_saf$GeneID  != "" & gb_saf$Start  < gb_saf$End
-
-    tss_saf <- tss_saf[tss_ok, ]
-    gb_saf  <- gb_saf[gb_ok, ]
-
     # ── Deduplicate ──
     tss_saf <- tss_saf[!duplicated(tss_saf$GeneID), ]
     gb_saf  <- gb_saf[!duplicated(gb_saf$GeneID), ]
 
     # ── Write outputs ──
-    write.table(tss_saf, file = file.path(argv$outdir, "tss.saf"), sep = "\t", quote = FALSE, row.names = FALSE)
-    message("[gtf2saf] TSS SAF: ", nrow(tss_saf), " regions → ", file.path(argv$outdir, "tss.saf"))
+    write.table(tss_saf, file = file.path(argv$outdir, "promoter.saf"), sep = "\t", quote = FALSE, row.names = FALSE)
+    message("[gtf2saf] Promoter SAF: ", nrow(tss_saf), " regions → ", file.path(argv$outdir, "promoter.saf"))
 
     write.table(gb_saf, file = file.path(argv$outdir, "genebody.saf"), sep = "\t", quote = FALSE, row.names = FALSE)
-    message("[gtf2saf] Gene body SAF: ", nrow(gb_saf), " regions → ", file.path(argv$outdir, "genebody.saf"))
+    message("[gtf2saf] Genebody SAF: ", nrow(gb_saf), " regions → ", file.path(argv$outdir, "genebody.saf"))
+
+    # ── Gene body BED（0-based 半开，供 bedtools map 与 genomecov -bg 对齐）──
+    #   SAF 为 1-based 闭区间，BED 为 0-based 半开：Start = saf_start - 1, End = saf_end。
+    #   基因体长度保持 End - Start + 1，与 featureCounts 的 Length 一致。
+    gb_bed <- data.frame(
+        Chr = gb_saf$Chr, Start = gb_saf$Start - 1, End = gb_saf$End,
+        GeneID = gb_saf$GeneID, Score = ".", Strand = gb_saf$Strand,
+        stringsAsFactors = FALSE
+    )
+    write.table(gb_bed, file = file.path(argv$outdir, "genebody.bed"), sep = "\t",
+                quote = FALSE, row.names = FALSE, col.names = FALSE)
+    message("[gtf2saf] Genebody BED: ", nrow(gb_bed), " regions → ", file.path(argv$outdir, "genebody.bed"))
+
+    # ── Full-gene BED（0-based 半开，供 POL2_COUNT 单碱基 5' 计数）──
+    #   全基因跨度（start→end），BED6 列序：Chr Start End GeneID . Strand。
+    #   基因集与 genebody.bed 一致（同为 filter_gtf 之后），保证下游 gene_id 全集一致。
+    gene_bed <- data.frame(
+        Chr = chr, Start = start - 1, End = end,
+        GeneID = gene_ids, Score = ".", Strand = strand,
+        stringsAsFactors = FALSE
+    )
+    write.table(gene_bed, file = file.path(argv$outdir, "gene.bed"), sep = "\t",
+                quote = FALSE, row.names = FALSE, col.names = FALSE)
+    message("[gtf2saf] Gene BED: ", nrow(gene_bed), " regions → ", file.path(argv$outdir, "gene.bed"))
+
+    # ── Strand-split gene BED（供 tss_meta 链特异性 computeMatrix）──
+    #   PRO-seq reverse-stranded: + 基因信号在 plus.bigWig, - 基因信号在 minus.bigWig。
+    #   tss_meta 需要按链拆分基因，分别用正确的 bigWig 做 metagene。
+    plus_idx  <- gene_bed$Strand == "+"
+    minus_idx <- gene_bed$Strand == "-"
+    write.table(gene_bed[plus_idx, ],  file = file.path(argv$outdir, "plus_genes.bed"), sep = "\t",
+                quote = FALSE, row.names = FALSE, col.names = FALSE)
+    write.table(gene_bed[minus_idx, ], file = file.path(argv$outdir, "minus_genes.bed"), sep = "\t",
+                quote = FALSE, row.names = FALSE, col.names = FALSE)
+    message("[gtf2saf] Strand-split BED: + ", sum(plus_idx), " genes, - ", sum(minus_idx), " genes")
 
     message("[gtf2saf] Done.")
 }

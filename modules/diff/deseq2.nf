@@ -1,15 +1,13 @@
 process DESEQ2 {
     tag "deseq2"
 
-    // Runs on the host (no container) so it can reach ${params.r} and the fixed
-    // WTSS script path below.
     input:
     path counts          // gene body count matrix (gene_id, length, samples)
     val  config_yml      // differential config YAML (group + compared-groups)
     path annotation      // gene annotation (gene_id, gene_name, gene_biotype)
 
     output:
-    path "deseq2_out/*", emit: results
+    path "deseq2_out/", emit: result
 
     script:
     """

@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: pause_analysis
-// Pausing index (length-normalized): TSS / gene body.
+// Pausing index (length-normalized): promoter / gene body.
 //   Inputs are the merged count matrices produced by `quantification`.
 //   Groups come from the samplesheet.
 //   1. compute PI table (pausing_index.R)
@@ -16,12 +16,12 @@ include { pausing_boxplot } from '../modules/pause_analysis/pausing_boxplot.nf'
 
 workflow pause_analysis {
     take:
-    tss_matrix        // channel: path(tss.matrix.txt)  — gene_id, length, <samples>
+    promoter_matrix   // channel: path(promoter.matrix.txt)  — gene_id, length, <samples>
     genebody_matrix   // channel: path(genebody.matrix.txt)
     groups_config     // channel: val(map) — group_name -> [samples] (from samplesheet)
 
     main:
-    pausing_index(tss_matrix, genebody_matrix)
+    pausing_index(promoter_matrix, genebody_matrix)
 
     // Build the groups YAML as a plain string (a val channel).
     // NOTE: never call file() / write files inside a .map closure — that triggers

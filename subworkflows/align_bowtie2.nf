@@ -5,8 +5,8 @@
 // Purpose: 
 //
 
-include { BOWTIE2_ALIGN } from '../modules/bowtie2/align.nf'
-include { SAMTOOLS_STAT } from '../modules/samtools_stat.nf'
+include { ALIGN as BOWTIE2_ALIGN} from '../modules/bowtie2/align.nf'
+include { STAT                  } from '../modules/samtools/stat.nf'
 
 workflow align_bowtie2{
     take:
@@ -29,13 +29,13 @@ workflow align_bowtie2{
     // ------------------------------------------------------------------
     // Step 2: samtools stat
     // ------------------------------------------------------------------    
-    SAMTOOLS_STAT(bam_bai_ch, fasta_ch)
+    STAT(bam_bai_ch, fasta_ch)
 
     emit:
     bam         = BOWTIE2_ALIGN.out.bam
     bai         = BOWTIE2_ALIGN.out.bai
     alignRate   = BOWTIE2_ALIGN.out.alignRate
-    flagstat    = SAMTOOLS_STAT.out.flagstat
-    idxstats    = SAMTOOLS_STAT.out.idxstats
-    stats       = SAMTOOLS_STAT.out.stats
+    flagstat    = STAT.out.flagstat
+    idxstats    = STAT.out.idxstats
+    stats       = STAT.out.stats
 }
