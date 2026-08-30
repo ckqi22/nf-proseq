@@ -63,8 +63,8 @@ workflow {
     read_ch = channel.fromPath(params.sample_sheet)
         .splitCsv(header: true)
         .map { row ->
-            if (!row.sample)    { error "samplesheet missing 'sample' column" }
-            if (!row.r1)        { error "samplesheet missing 'r1' column" }
+            if (!row.sample) { error "samplesheet missing 'sample' column" }
+            if (!row.r1)     { error "samplesheet missing 'r1' column" }
             def meta = [
                 sample:     row.sample,
                 group:      row.group ?: 'unknown',

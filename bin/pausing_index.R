@@ -2,12 +2,12 @@
 # =============================================================================
 # pausing_index.R — Compute the PRO-seq pausing index for each gene
 #
-# PI_i = (TSS reads / TSS window length) / (gene body reads / gene body length)
+# PI_i = (promoter reads / promoter window length) / (genebody reads / genebody length)
 #
 # Input: two count matrices produced by the quantification subworkflow
 #   (featurecounts_merge.R), each with columns: gene_id, length, <sample1>, ...
-#   - TSS matrix:       'length' = TSS window size (constant across genes)
-#   - gene body matrix: 'length' = gene body length (drives the min-length filter)
+#   - promoter matrix:  'length' = promoter window size (constant across genes)
+#   - genebody matrix:  'length' = genebody length (drives the min-length filter)
 # Output: a single tab-separated PI table.
 # =============================================================================
 suppressWarnings(suppressMessages({
@@ -16,43 +16,43 @@ suppressWarnings(suppressMessages({
 
 # ── Parse args ──
 argv <- arg_parser("Compute length-normalized PRO-seq pausing index")
-argv <- add_argument(argv, "--tss_counts",      help = "TSS count matrix (gene_id, length, samples)")
-argv <- add_argument(argv, "--gb_counts",       help = "Gene body count matrix (gene_id, length, samples)")
+argv <- add_argument(argv, "--promoter_count",  help = "Promoter count matrix (gene_id, length, samples)")
+argv <- add_argument(argv, "--genebody_count",  help = "Genebody count matrix (gene_id, length, samples)")
 argv <- add_argument(argv, "--min_gene_length", help = "Minimum gene body length (bp)", default = 800, type = "integer")
 argv <- add_argument(argv, "--output",          help = "Output PI table (tsv)")
 argv <- parse_args(argv)
 
 # ── Compute pausing index ──
-compute_pausing_index <- function(tss, gb, min_len) {
-    gene_col <- colnames(tss)[1]
-    if (colnames(gb)[1] != gene_col)
-        stop("TSS and gene body matrices must share the same first column (gene_id)")
-    if (!"length" %in% colnames(tss)) stop("TSS matrix must have a 'length' column")
-    if (!"length" %in% colnames(gb))  stop("gene body matrix must have a 'length' column")
+compute_pausing_index <- function(promoter, genebody, min_len) {
+    gene_col <- colnames(promoter)[1]
+    if (colnames(genebody)[1] != gene_col)
+        stop("promoter and genebody count matrices must share the same first column (gene_id)")
+    if (!"length" %in% colnames(promoter)) stop("promoter matrix must have a 'length' column")
+    if (!"length" %in% colnames(genebody)) stop("genebody matrix must have a 'length' column")
 
     # Align both matrices on common genes, then filter by gene body length.
-    common <- intersect(tss[[gene_col]], gb[[gene_col]])
-    tss <- tss[match(common, tss[[gene_col]]), , drop = FALSE]
-    gb  <- gb[match(common, gb[[gene_col]]), , drop = FALSE]
+    common <- intersect(promoter[[gene_col]], genebody[[gene_col]])
+    promoter <- promoter[match(common, promoter[[gene_col]]), , drop = FALSE]
+    genebody <- genebody[match(common, genebody[[gene_col]]), , drop = FALSE]
 
-    gb_len <- as.numeric(gb[["length"]])
-    keep   <- gb_len >= min_len
-    tss <- tss[keep, , drop = FALSE]
-    gb  <- gb[keep, , drop = FALSE]
+    genebody_len <- as.numeric(genebody[["length"]])
+    keep   <- genebody_len >= min_len
+    promoter <- promoter[keep, , drop = FALSE]
+    genebody <- genebody[keep, , drop = FALSE]
 
-    genes   <- tss[[gene_col]]
-    tss_len <- as.numeric(tss[["length"]])   # TSS window length
-    gb_len  <- as.numeric(gb[["length"]])    # gene body length
+    genes   <- promoter[[gene_col]]
+    promoter_len <- as.numeric(promoter[["length"]])   # promoter window length
+    genebody_len <- as.numeric(genebody[["length"]])   # genebody length
 
-    sample_cols <- setdiff(colnames(tss), c(gene_col, "length"))
+    sample_cols <- setdiff(colnames(promoter), c(gene_col, "length"))
 
-    out <- data.frame(gene_id = genes, tss_len = tss_len, genebody_len = gb_len, stringsAsFactors = FALSE)
+    out <- data.frame(gene_id = genes, promoter_len = promoter_len, genebody_len = genebody_len, stringsAsFactors = FALSE)
     for (s in sample_cols) {
-        pause <- as.numeric(tss[[s]])
-        body  <- as.numeric(gb[[s]])
-        pi    <- (pause / tss_len) / (body / gb_len)
+        pause <- as.numeric(promoter[[s]])
+        body  <- as.numeric(genebody[[s]])
+        pi    <- (pause / promoter_len) / (body / genebody_len)
         pi[body <= 0] <- NA   # undefined when the gene body has no reads
-        out[[paste0(s, "_tss")]] <- pause
+        out[[paste0(s, "_promoter")]] <- pause
         out[[paste0(s, "_genebody")]]  <- body
         out[[paste0(s, "_PI")]]    <- pi
     }
@@ -61,13 +61,13 @@ compute_pausing_index <- function(tss, gb, min_len) {
 
 # ── Main ──
 main <- function(argv) {
-    if (!file.exists(argv$tss_counts)) stop("TSS counts file not found: ", argv$tss_counts)
-    if (!file.exists(argv$gb_counts))  stop("gene body counts file not found: ", argv$gb_counts)
+    if (!file.exists(argv$promoter_count)) stop("Promoter counts file not found: ", argv$promoter_count)
+    if (!file.exists(argv$genebody_count)) stop("Genebody counts file not found: ", argv$genebody_count)
 
-    tss <- read.delim(argv$tss_counts, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
-    gb  <- read.delim(argv$gb_counts,  header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+    promoter <- read.delim(argv$promoter_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+    genebody <- read.delim(argv$genebody_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
 
-    out <- compute_pausing_index(tss, gb, as.integer(argv$min_gene_length))
+    out <- compute_pausing_index(promoter, genebody, as.integer(argv$min_gene_length))
 
     write.table(out, file = argv$output, sep = "\t", quote = FALSE, row.names = FALSE)
     message("[pausing_index] ", nrow(out), " genes x ", ncol(out), " cols -> ", argv$output)

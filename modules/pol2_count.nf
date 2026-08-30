@@ -32,6 +32,11 @@ process POL2_COUNT {
 
     awk 'BEGIN{OFS="\\t"} {print \$4, (\$3-\$2),  int(\$7)}' plus.map  > ${meta.sample}.pol2.counts.txt
     awk 'BEGIN{OFS="\\t"} {print \$4, (\$3-\$2), -int(\$7)}' minus.map >> ${meta.sample}.pol2.counts.txt
-    sort -k1,1 ${meta.sample}.pol2.counts.txt -o ${meta.sample}.pol2.counts.txt
+    
+    awk 'NR==FNR{order[\$4]=NR; next} {print order[$1]"\t"$0}' \
+    ${gene_bed} ${meta.sample}.pol2.counts.txt \
+    | sort -k1,1n \
+    | cut -f2- \
+    > ${meta.sample}.pol2.counts.sorted.txt
     """
 }
