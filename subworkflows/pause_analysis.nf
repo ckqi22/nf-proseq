@@ -16,8 +16,8 @@ include { pausing_boxplot } from '../modules/pause_analysis/pausing_boxplot.nf'
 
 workflow pause_analysis {
     take:
-    promoter_matrix   // channel: path(promoter.matrix.txt)  — gene_id, length, <samples>
-    genebody_matrix   // channel: path(genebody.matrix.txt)
+    promoter_matrix   // channel: path(pol2_promoter.matrix.txt)  — gene_id, length, <samples>
+    genebody_matrix   // channel: path(pol2_genebody.matrix.txt)
     groups_config     // channel: val(map) — group_name -> [samples] (from samplesheet)
 
     main:

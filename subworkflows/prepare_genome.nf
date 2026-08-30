@@ -31,12 +31,12 @@ workflow prepare_genome {
     //   before SAF/index generation.
 
     emit:
-    index           = index
-    fasta           = fasta
-    promoter_saf         = GTF2SAF.out.promoter_saf
-    genebody_saf    = GTF2SAF.out.genebody_saf
-    genebody_bed    = GTF2SAF.out.genebody_bed
-    gene_bed        = GTF2SAF.out.gene_bed
-    plus_genes_bed  = GTF2SAF.out.plus_genes_bed
-    minus_genes_bed = GTF2SAF.out.minus_genes_bed
+    index               = index
+    fasta               = fasta
+    promoter_bed        = GTF2SAF.out.promoter_bed        // 最长 transcript promoter → pol2_count 单碱基 promoter 计数
+    genebody_bed        = GTF2SAF.out.genebody_bed        // 最长 transcript genebody → pol2_count 单碱基 genebody 计数
+    genebody_union_saf  = GTF2SAF.out.genebody_union_saf  // 所有 transcript genebody union → quantification(featureCounts)
+    gene_bed            = GTF2SAF.out.gene_bed            // gene 级跨度 → tss_meta + SIGNAL_TABLE(信号表 intersect)
+    // plus_genes_bed  = GTF2SAF.out.plus_genes_bed    // 未使用，先注释掉
+    // minus_genes_bed = GTF2SAF.out.minus_genes_bed   // 未使用，先注释掉
 }

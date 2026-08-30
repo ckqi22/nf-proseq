@@ -12,6 +12,7 @@ process pausing_index {
 
     script:
     def min_gene_length = params.tss.min_gene_length ?: 800
+    def pseudocount     = params.tss.pi_pseudocount ?: 1e-3
     """
     source /home/ck/miniconda3/bin/activate renv
 
@@ -19,6 +20,7 @@ process pausing_index {
         --promoter_count ${promoter_count} \\
         --genebody_count ${genebody_count} \\
         --min_gene_length ${min_gene_length} \\
+        --pseudocount ${pseudocount} \\
         --output Pausing_Index.tsv
     """
 }

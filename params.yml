@@ -40,6 +40,7 @@ tss:
   downstream: 300              # TSS 下游窗口（bp），默认 TSS+300bp
   genebody_offset: 301         # 基因体起始偏移（bp），TSS+301bp 起
   min_gene_length: 800         # 最小基因长度（bp），短于此值不计算 PI
+  pi_pseudocount: 1e-3         # PI 分子分母同加的伪计数，避免 genebody=0 时分母为 0
 
 # ---- Metagene 分析 ----
 metagene:

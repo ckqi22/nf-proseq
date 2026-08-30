@@ -23,12 +23,12 @@ include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
 include { quantification    } from './subworkflows/quantification.nf'
 include { diff              } from './subworkflows/diff.nf'
 include { enrich            } from './subworkflows/enrich.nf'
-include { pol2_profile      } from './subworkflows/pol2_profile.nf'
+include { pol2_count      } from './subworkflows/pol2_count.nf'
 include { pause_analysis    } from './subworkflows/pause_analysis.nf'
 include { tss_meta          } from './subworkflows/tss_meta.nf'
 include { profile as profile_genebody } from './subworkflows/profile.nf'
 include { profile as profile_promoter } from './subworkflows/profile.nf'
-include { profile as profile_pol2     } from './subworkflows/profile.nf'
+include { SIGNAL_TABLE        } from './modules/signal_table.nf'
 
 workflow {
 
@@ -98,9 +98,9 @@ workflow {
     align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
         
     // ========================================================================
-    // Step 3: quantification (per-sample featureCounts -> merged matrices)
+    // Step 3: quantification (per-sample featureCounts -> merged gene body matrix)
     // ========================================================================
-    quantification(align_bowtie2.out.bam, prepare_genome.out.promoter_saf, prepare_genome.out.genebody_saf)
+    quantification(align_bowtie2.out.bam, prepare_genome.out.genebody_union_saf)
     
     // ========================================================================
     // Step 4: Differential expression (DESeq2 on gene body counts)
@@ -126,34 +126,57 @@ workflow {
 
     // ========================================================================
     // Step 6: Pol II active-site single-base distribution
+    //   (produces per-base bedGraph/bigWig + single-base promoter/genebody matrices for PI)
     // ========================================================================
-    pol2_profile(align_bowtie2.out.bam, prepare_genome.out.gene_bed)
+    pol2_count(align_bowtie2.out.bam, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed)
 
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
-    //   （featureCounts promoter/genebody 与 pol2 单碱基矩阵通用）
     methods = params.normalize_methods ?: 'cpm,fpkm'
     profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody')
-    profile_promoter(quantification.out.promoter_matrix, annotation_ch, methods, 'promoter')
-    profile_pol2(pol2_profile.out.matrix, annotation_ch, methods, 'pol2')
+    // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
     // Step 7: Metagene TSS profiles
     // ========================================================================
     // gtf_ch = config_ch.map { it -> it.gtf }
-    tss_meta(pol2_profile.out.bigwig, prepare_genome.out.gene_bed)
+    tss_meta(pol2_count.out.bigwig, prepare_genome.out.gene_bed)
 
     // ========================================================================
-    // Step 8: Pause index (promoter / genebody)
+    // Step 8: Pause index (single-base promoter / gene body)
     // ========================================================================
-    pause_analysis(quantification.out.promoter_matrix, quantification.out.genebody_matrix, groups_config_ch)
+    pause_analysis(pol2_count.out.promoter_matrix, pol2_count.out.genebody_matrix, groups_config_ch)
+
+    // ========================================================================
+    // Step 9: 逐碱基 Pol II 活性位点信号表（按组聚合 + RPM + gene/transcript 注释）
+    // ========================================================================
+    pol2_count.out.bedgraph
+        .collect()
+        .multiMap { tuples ->
+            files:    tuples.collectMany { _meta, plus, minus -> [plus, minus] }
+            manifest: tuples.collect { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }.join('\n')
+        }
+        .set { bg_mm }
+
+    groups_yml_ch = groups_config_ch.map { groups ->
+        def lines = []
+        groups.each { name, samples ->
+            lines << "${name}:"
+            samples.each { s -> lines << "  - ${s}" }
+        }
+        lines.join('\n')
+    }
+
+    SIGNAL_TABLE(bg_mm.files, bg_mm.manifest, groups_yml_ch,
+                 prepare_genome.out.gene_bed, config_ch.map { it.gtf }, annotation_ch)
 
     // ========================================================================
     // Publish results to output directories
     // ========================================================================
     publish:
     info                = parse_config.out.info
-    promoter_saf        = prepare_genome.out.promoter_saf
-    genebody_saf        = prepare_genome.out.genebody_saf
+    promoter_bed        = prepare_genome.out.promoter_bed.map { _name, file -> file }
+    genebody_bed        = prepare_genome.out.genebody_bed.map { _name, file -> file }
+    genebody_union_saf  = prepare_genome.out.genebody_union_saf.map { _name, file -> file }
     gene_bed            = prepare_genome.out.gene_bed
 
     fastqc_raw_zip      = preprocess.out.fastqc_raw_zip
@@ -171,22 +194,22 @@ workflow {
     bai                 = align_bowtie2.out.bai
     alignRate           = align_bowtie2.out.alignRate
 
-    promoter_counts     = quantification.out.promoter_counts
-    genebody_counts     = quantification.out.genebody_counts
-    promoter_matrix     = quantification.out.promoter_matrix
-    genebody_matrix     = quantification.out.genebody_matrix
+    promoter_pol2_counts    = pol2_count.out.promoter_counts
+    genebody_pol2_counts    = pol2_count.out.genebody_counts
+    genebody_counts         = quantification.out.genebody_counts
+    promoter_pol2_matrix    = pol2_count.out.promoter_matrix
+    genebody_pol2_matrix    = pol2_count.out.genebody_matrix
+    genebody_matrix         = quantification.out.genebody_matrix
 
     diff_result         = diff_result_ch
 
     enrich_result       = enrich_result_ch
 
-    coverage_bw         = pol2_profile.out.bigwig
-    pol2_counts         = pol2_profile.out.counts
-    pol2_matrix         = pol2_profile.out.matrix
+    coverage_bw         = pol2_count.out.bigwig
+    pol2_signal_table   = SIGNAL_TABLE.out.signal_table
 
     genebody_profile    = profile_genebody.out.annotated
-    promoter_profile    = profile_promoter.out.annotated
-    pol2_annotated      = profile_pol2.out.annotated
+    // promoter_profile    = profile_promoter.out.annotated
 
     tss_meta_matrix     = tss_meta.out.matrix
     tss_meta_profile    = tss_meta.out.profile
@@ -201,8 +224,9 @@ workflow {
 // ------------------------------------------------------------------
 output {
     info                { path "01.info/" }
-    promoter_saf        { path "01.info/" }
-    genebody_saf        { path "01.info/" }
+    promoter_bed        { path "01.info/" }
+    genebody_bed        { path "01.info/" }
+    genebody_union_saf  { path "01.info/" }
     gene_bed            { path "01.info/" }
 
     fastqc_raw_zip      { path "02.fastqc/" }
@@ -220,21 +244,20 @@ output {
     bai                 { path "04.Alignment/" }
     alignRate           { path "04.Alignment/" }
 
-    promoter_counts     { path "05.Quantification/" }
-    genebody_counts     { path "05.Quantification/" }
-    promoter_matrix     { path "05.Quantification/" }
-    genebody_matrix     { path "05.Quantification/" }
-    pol2_counts         { path "05.Quantification/" }
-    pol2_matrix         { path "05.Quantification/" }
-    genebody_profile    { path "05.Quantification/" }
-    promoter_profile    { path "05.Quantification/" }
-    pol2_annotated      { path "05.Quantification/" }
+    promoter_pol2_counts    { path "05.Quantification/" }
+    genebody_pol2_counts    { path "05.Quantification/" }
+    genebody_counts         { path "05.Quantification/" }
+    promoter_pol2_matrix    { path "05.Quantification/" }
+    genebody_pol2_matrix    { path "05.Quantification/" }
+    genebody_profile        { path "05.Quantification/" }
+    // promoter_profile        { path "05.Quantification/" }
 
     diff_result         { path "06.Differential_Expression/" }
 
     enrich_result       { path "07.enrich/" }
 
     coverage_bw         { path "08.Pol2_coverage/" }
+    pol2_signal_table   { path "08.Pol2_coverage/" }
 
     tss_meta_matrix     { path "09.TSS_Metagene/" }
     tss_meta_profile    { path "09.TSS_Metagene/" }

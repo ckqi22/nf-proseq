@@ -3,8 +3,7 @@ process FEATURECOUNTS {
 
     input:
     tuple val(meta), path(bams)
-    path annotation
-    val type
+    tuple val(type), path(annotation)
 
     output:
     path "*.featureCounts.txt", emit: counts

@@ -6,12 +6,12 @@ process GTF2SAF {
     path gtf
 
     output:
-    path 'promoter.saf', emit: promoter_saf
-    path 'genebody.saf', emit: genebody_saf
-    path 'genebody.bed', emit: genebody_bed
+    tuple val("pol2_promoter"), path('promoter.bed'), emit: promoter_bed
+    tuple val("pol2_genebody"), path('genebody.bed'), emit: genebody_bed
+    tuple val("genebody"), path('genebody_union.saf'), emit: genebody_union_saf
     path 'gene.bed', emit: gene_bed
-    path 'plus_genes.bed', emit: plus_genes_bed
-    path 'minus_genes.bed', emit: minus_genes_bed
+    // path 'plus_genes.bed', emit: plus_genes_bed     // 未使用，先注释掉
+    // path 'minus_genes.bed', emit: minus_genes_bed   // 未使用，先注释掉
 
     script:
     """

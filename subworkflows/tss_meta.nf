@@ -2,7 +2,7 @@
 //
 // SUBWORKFLOW: tss_meta
 // TSS metagene profile via deepTools:
-//   bigWig (来自 pol2_profile, gene-strand) -> computeMatrix (reference-point TSS) -> plotProfile
+//   bigWig (来自 pol2_count, gene-strand) -> computeMatrix (reference-point TSS) -> plotProfile
 //   正链基因、负链基因分别出图：各自一张 TSS profile PDF。
 //
 

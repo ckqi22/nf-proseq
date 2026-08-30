@@ -17,7 +17,7 @@ process GENOMECOV {
     //   _plus  = + 链基因信号（reverse，-strand -） => 正值
     //   _minus = - 链基因信号（forward，-strand +） => 取负（-scale -1）
     // 两轨一正一负，加载进 IGV 即 gene-strand signed 视图（同官方 TrackTx/Mahat）。
-    // 计数时按基因链取对应轨（pol2_count），负值轨取负回正。
+    // 计数时按基因链取对应轨（singlebase_count），负值轨取负回正。
     // PE 时只保留 read1（flag 0x40=64，R2 是 5' 接头侧无信号）；SE 直接使用 BAM。
     def sig_bam = meta.single_end ? "${bam}" : "r1.bam"
     def extract = meta.single_end ? "" : "samtools view -f 64 -F 4 -b ${bam} -o r1.bam"
