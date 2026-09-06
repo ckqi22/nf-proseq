@@ -8,7 +8,7 @@ process SINGLEBASE_COUNT {
     tuple val(type), path(region_bed)
 
     output:
-    path "${meta.sample}.${type}.counts.txt", emit: counts
+    tuple val(meta), path("${meta.sample}.${type}.counts.txt"), emit: counts
 
     script:
     """

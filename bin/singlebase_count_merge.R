@@ -1,13 +1,14 @@
 #!/usr/bin/env Rscript
 # =============================================================================
 # singlebase_count_merge.R — Merge per-sample single-base count files into
-# one count matrix (gene_id length samples). Generic over region type via --suffix.
+# one count matrix (gene_id length samples). Sample names are supplied
+# explicitly via --sample (parallel to --count), not derived from filenames.
 #
 # Each per-sample file (headerless, tab-separated) has columns:
 #   gene_id  length  count
 # Merges on gene_id into:
 #   gene_id  length  <sample1>  <sample2> ...
-#   - sample name is derived from the filename by stripping --suffix
+#   - sample names come from --sample, one per --count file, in order
 #   - 'length' is carried from the first file (annotation-derived, identical
 #     across samples since every sample uses the same region BED)
 # =============================================================================
@@ -17,28 +18,33 @@ suppressWarnings(suppressMessages({
 
 # ── Parse args ──
 argv <- arg_parser("Merge per-sample single-base region count files into a matrix")
-argv <- add_argument(argv, "--inputs", help = "Comma-separated per-sample count files")
-argv <- add_argument(argv, "--suffix", help = "Filename suffix to strip for sample name (e.g. .promoter.counts.txt)")
+argv <- add_argument(argv, "--sample", help = "Comma-separated sample names (one per count file, in order)")
+argv <- add_argument(argv, "--count",  help = "Comma-separated per-sample count files (same order as --sample)")
 argv <- add_argument(argv, "--output", help = "Output merged count matrix (tsv)")
 argv <- parse_args(argv)
 
 # ── Read one per-sample count file ──
-read_counts <- function(f, suffix) {
+read_counts <- function(f) {
     dt <- read.delim(f, header = FALSE, sep = "\t", stringsAsFactors = FALSE,
                      col.names = c("gene_id", "length", "count"))
-    suffix_esc <- gsub("\\.", "\\\\.", suffix)          # 把 . 转义为 \. 供正则匹配
-    sample <- sub(paste0(suffix_esc, "$"), "", basename(f))
-    list(gene_id = dt$gene_id, length = dt$length, sample = sample, count = dt$count)
+    list(gene_id = dt$gene_id, length = dt$length, count = dt$count)
 }
 
 # ── Main ──
 main <- function(argv) {
-    files <- trimws(unlist(strsplit(argv$inputs, ",", fixed = TRUE)))
+    samples <- trimws(unlist(strsplit(argv$sample, ",", fixed = TRUE)))
+    samples <- samples[nzchar(samples)]
+    files <- trimws(unlist(strsplit(argv$count, ",", fixed = TRUE)))
     files <- files[nzchar(files)]
-    if (length(files) == 0) stop("[singlebase_count_merge] no input count files given")
+
+    if (length(samples) == 0) stop("[singlebase_count_merge] no sample names given (--sample)")
+    if (length(files) == 0)   stop("[singlebase_count_merge] no count files given (--count)")
+    if (length(samples) != length(files))
+        stop("[singlebase_count_merge] --sample (", length(samples), ") and --count (",
+             length(files), ") must have the same length")
     for (f in files) if (!file.exists(f)) stop("[singlebase_count_merge] count file not found: ", f)
 
-    counts_list <- lapply(files, read_counts, suffix = argv$suffix)
+    counts_list <- lapply(files, read_counts)
 
     # Length is annotation-derived and identical across samples; take it once
     # from the first file and re-attach after merging.
@@ -48,9 +54,10 @@ main <- function(argv) {
     # Full outer join on gene_id (defensive: all samples share the same region
     # BED, so gene sets are identical in practice).
     res <- data.frame(gene_id = counts_list[[1]]$gene_id, stringsAsFactors = FALSE)
-    for (p in counts_list) {
+    for (i in 1:length(counts_list)) {
+        p <- counts_list[[i]]
         one <- data.frame(gene_id = p$gene_id, count = p$count, stringsAsFactors = FALSE)
-        names(one) <- c("gene_id", p$sample)
+        names(one) <- c("gene_id", samples[i])
         res <- merge(res, one, by = "gene_id", all = TRUE, sort = FALSE)
     }
 

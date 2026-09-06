@@ -2,10 +2,13 @@
 //
 // SUBWORKFLOW: prepare_genome
 // Resolve reference genome (fasta + bowtie2 index) and generate
-// promoter + genebody SAF annotations from the reference GTF.
+// BED (tss/promoter/genebody/gene) + genebody-union SAF annotations
+// from the reference GTF.
 //
 
 include { GTF2SAF } from '../modules/gtf2saf.nf'
+include { LONGEST_TX } from '../modules/longest_tx.nf'
+include { GTF2BED } from '../modules/gtf2bed.nf'
 
 workflow prepare_genome {
     take:
@@ -13,7 +16,18 @@ workflow prepare_genome {
 
     main:
     // ------------------------------------------------------------------
-    // annotation: promoter + genebody SAF
+    // representative transcript (longest protein_coding per gene, exon-sum) → GTF
+    // 单一来源：PI(分支A) 与 TSS metagene 均由此 GTF 派生。
+    // ------------------------------------------------------------------
+    LONGEST_TX(config_ch.map { it -> it.gtf })
+
+    // ------------------------------------------------------------------
+    // annotation BED：代表 transcript 的 TSS 碱基 + promoter/genebody 窗口 + gene 跨度
+    // ------------------------------------------------------------------
+    GTF2BED(config_ch.map { it -> it.gtf }, LONGEST_TX.out.representative_gtf)
+
+    // ------------------------------------------------------------------
+    // annotation SAF：genebody union（featureCounts 定量）
     // ------------------------------------------------------------------
     GTF2SAF(config_ch.map { it -> it.gtf })
 
@@ -33,10 +47,10 @@ workflow prepare_genome {
     emit:
     index               = index
     fasta               = fasta
-    promoter_bed        = GTF2SAF.out.promoter_bed        // 最长 transcript promoter → pol2_count 单碱基 promoter 计数
-    genebody_bed        = GTF2SAF.out.genebody_bed        // 最长 transcript genebody → pol2_count 单碱基 genebody 计数
-    genebody_union_saf  = GTF2SAF.out.genebody_union_saf  // 所有 transcript genebody union → quantification(featureCounts)
-    gene_bed            = GTF2SAF.out.gene_bed            // gene 级跨度 → tss_meta + SIGNAL_TABLE(信号表 intersect)
-    // plus_genes_bed  = GTF2SAF.out.plus_genes_bed    // 未使用，先注释掉
-    // minus_genes_bed = GTF2SAF.out.minus_genes_bed   // 未使用，先注释掉
+    representative_gtf  = LONGEST_TX.out.representative_gtf // 代表转录本 GTF（供 GTF2BED / 下游）
+    tss_bed             = GTF2BED.out.tss_bed               // 代表 transcript TSS BED6 → TSS metagene
+    promoter_bed        = GTF2BED.out.promoter_bed          // 代表 transcript promoter → pol2_count 单碱基 promoter 计数
+    genebody_bed        = GTF2BED.out.genebody_bed          // 代表 transcript genebody → pol2_count 单碱基 genebody 计数
+    gene_bed            = GTF2BED.out.gene_bed              // gene 级跨度 → SIGNAL_TABLE(信号表 intersect)
+    genebody_union_saf  = GTF2SAF.out.genebody_union_saf    // 所有 transcript genebody union → quantification(featureCounts)
 }

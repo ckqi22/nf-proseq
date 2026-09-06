@@ -23,12 +23,13 @@ include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
 include { quantification    } from './subworkflows/quantification.nf'
 include { diff              } from './subworkflows/diff.nf'
 include { enrich            } from './subworkflows/enrich.nf'
-include { pol2_count      } from './subworkflows/pol2_count.nf'
+include { pol2_count        } from './subworkflows/pol2_count.nf'
 include { pause_analysis    } from './subworkflows/pause_analysis.nf'
-include { tss_meta          } from './subworkflows/tss_meta.nf'
+include { metagene          } from './subworkflows/metagene.nf'
 include { profile as profile_genebody } from './subworkflows/profile.nf'
 include { profile as profile_promoter } from './subworkflows/profile.nf'
 include { SIGNAL_TABLE        } from './modules/signal_table.nf'
+// include { tss_meta          } from './subworkflows/tss_meta.nf'
 
 workflow {
 
@@ -109,16 +110,22 @@ workflow {
 
     if (params.compared_groups) {
         diff(quantification.out.genebody_matrix, groups_config_ch, annotation_ch)
-        diff_result_ch = diff.out.result
+        diff_result_ch    = diff.out.result
+        checkde_result_ch = diff.out.checkde_result
+        de_plot_ch        = diff.out.de_plot
+        pca_plot_ch       = diff.out.pca_plot
     } else {
-        diff_result_ch = channel.empty()
+        diff_result_ch    = channel.empty()
+        checkde_result_ch = channel.empty()
+        de_plot_ch        = channel.empty()
+        pca_plot_ch       = channel.empty()
     }
 
     // ========================================================================
     // Step 5: Enrichment analysis
     // ========================================================================
     if (params.compared_groups) {
-        enrich(diff_result_ch)
+        enrich(diff.out.passed)
         enrich_result_ch = enrich.out.gokegg_result.mix(enrich.out.gsea_result)
     } else {
         enrich_result_ch = channel.empty()
@@ -136,10 +143,10 @@ workflow {
     // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
-    // Step 7: Metagene TSS profiles
+    // Step 7: TSS Metagene profiles
     // ========================================================================
-    // gtf_ch = config_ch.map { it -> it.gtf }
-    tss_meta(pol2_count.out.bigwig, prepare_genome.out.gene_bed)
+    // tss_meta(pol2_count.out.bigwig, prepare_genome.out.gene_bed)
+    metagene(pol2_count.out.bigwig_cpm, prepare_genome.out.tss_bed)
 
     // ========================================================================
     // Step 8: Pause index (single-base promoter / gene body)
@@ -149,13 +156,13 @@ workflow {
     // ========================================================================
     // Step 9: 逐碱基 Pol II 活性位点信号表（按组聚合 + RPM + gene/transcript 注释）
     // ========================================================================
-    pol2_count.out.bedgraph
-        .collect()
-        .multiMap { tuples ->
-            files:    tuples.collectMany { _meta, plus, minus -> [plus, minus] }
-            manifest: tuples.collect { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }.join('\n')
-        }
-        .set { bg_mm }
+    bg_files    = pol2_count.out.bedGraph
+                    .map { _meta, plus, minus -> [plus, minus] }
+                    .collect()
+    bg_manifest = pol2_count.out.bedGraph
+                    .map { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }
+                    .collect()
+                    .map { lines -> lines.join('\n') }
 
     groups_yml_ch = groups_config_ch.map { groups ->
         def lines = []
@@ -166,7 +173,7 @@ workflow {
         lines.join('\n')
     }
 
-    SIGNAL_TABLE(bg_mm.files, bg_mm.manifest, groups_yml_ch,
+    SIGNAL_TABLE(bg_files, bg_manifest, groups_yml_ch,
                  prepare_genome.out.gene_bed, config_ch.map { it.gtf }, annotation_ch)
 
     // ========================================================================
@@ -194,25 +201,32 @@ workflow {
     bai                 = align_bowtie2.out.bai
     alignRate           = align_bowtie2.out.alignRate
 
-    promoter_pol2_counts    = pol2_count.out.promoter_counts
-    genebody_pol2_counts    = pol2_count.out.genebody_counts
+    promoter_pol2_counts    = pol2_count.out.promoter_counts.map { _meta, file -> file }
+    genebody_pol2_counts    = pol2_count.out.genebody_counts.map { _meta, file -> file }
     genebody_counts         = quantification.out.genebody_counts
     promoter_pol2_matrix    = pol2_count.out.promoter_matrix
     genebody_pol2_matrix    = pol2_count.out.genebody_matrix
     genebody_matrix         = quantification.out.genebody_matrix
 
     diff_result         = diff_result_ch
+    checkde_result      = checkde_result_ch
+    de_plot             = de_plot_ch
+    pca_plot            = pca_plot_ch
 
     enrich_result       = enrich_result_ch
 
     coverage_bw         = pol2_count.out.bigwig
+    coverage_bw_cpm     = pol2_count.out.bigwig_cpm
     pol2_signal_table   = SIGNAL_TABLE.out.signal_table
 
     genebody_profile    = profile_genebody.out.annotated
     // promoter_profile    = profile_promoter.out.annotated
 
-    tss_meta_matrix     = tss_meta.out.matrix
-    tss_meta_profile    = tss_meta.out.profile
+    // tss_meta_matrix     = tss_meta.out.matrix
+    // tss_meta_profile    = tss_meta.out.profile
+    tss_metagene_plot   = metagene.out.plot
+    tss_metagene_matrix = metagene.out.matrix
+
 
     pi_all              = pause_analysis.out.pi_all
     pi_boxplot          = pause_analysis.out.pi_boxplot
@@ -249,18 +263,25 @@ output {
     genebody_counts         { path "05.Quantification/" }
     promoter_pol2_matrix    { path "05.Quantification/" }
     genebody_pol2_matrix    { path "05.Quantification/" }
+    genebody_matrix         { path "05.Quantification/" }
     genebody_profile        { path "05.Quantification/" }
     // promoter_profile        { path "05.Quantification/" }
 
     diff_result         { path "06.Differential_Expression/" }
+    checkde_result      { path "06.Differential_Expression/" }
+    de_plot             { path "06.Differential_Expression/" }
+    pca_plot            { path "06.Differential_Expression/" }
 
     enrich_result       { path "07.enrich/" }
 
     coverage_bw         { path "08.Pol2_coverage/" }
+    coverage_bw_cpm     { path "08.Pol2_coverage/" }
     pol2_signal_table   { path "08.Pol2_coverage/" }
 
-    tss_meta_matrix     { path "09.TSS_Metagene/" }
-    tss_meta_profile    { path "09.TSS_Metagene/" }
+    // tss_meta_matrix     { path "09.TSS_Metagene/" }
+    // tss_meta_profile    { path "09.TSS_Metagene/" }
+    tss_metagene_plot   {path "09.TSS_Metagene/"}
+    tss_metagene_matrix {path "09.TSS_Metagene/"}
 
     pi_all              { path "10.Pausing_Index/" }
     pi_boxplot          { path "10.Pausing_Index/" }

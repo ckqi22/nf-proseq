@@ -26,16 +26,26 @@ workflow pol2_count {
     GENOMECOV(bam)
 
     // 同一份逐碱基 bedGraph 供两个区域计数进程消费，并 emit 出去（Nextflow 多消费者广播）。
-    // 区域名（type）已随 region BED 以 tuple 形式传入，不再单独硬编码。
     SINGLEBASE_COUNT_PROMOTER(GENOMECOV.out.bedgraph, promoter_bed)
     SINGLEBASE_COUNT_GENEBODY(GENOMECOV.out.bedgraph, genebody_bed)
 
-    MERGE_PROMOTER(SINGLEBASE_COUNT_PROMOTER.out.counts.collect(), 'promoter', 'pol2_promoter')
-    MERGE_GENEBODY(SINGLEBASE_COUNT_GENEBODY.out.counts.collect(), 'genebody', 'pol2_genebody')
+    // 先 map 出纯值再 collect（tuple 通道直接 collect 会被扁平化）；两个分支消费同一通道、
+    // 顺序一致，故第 i 个样本名与第 i 个文件对应。
+    promoter_counts_ch = SINGLEBASE_COUNT_PROMOTER.out.counts
+    genebody_counts_ch  = SINGLEBASE_COUNT_GENEBODY.out.counts
+
+    MERGE_PROMOTER(promoter_counts_ch.map { _meta, f -> f }.collect(),
+                   promoter_counts_ch.map { meta, _f -> meta.sample }.collect(),
+                   'pol2_promoter')
+    MERGE_GENEBODY(genebody_counts_ch.map { _meta, f -> f }.collect(),
+                   genebody_counts_ch.map { meta, _f -> meta.sample }.collect(),
+                   'pol2_genebody')
 
     emit:
-    bedGraph  = GENOMECOV.out.bedgraph                      // tuple(meta, plus_bg, minus_bg)  逐碱基信号
-    bigwig    = GENOMECOV.out.bigwig                        // tuple(meta, plus_bw, minus_bw)  gene-strand
+    bedGraph  = GENOMECOV.out.bedgraph                      // tuple(meta, plus_bg, minus_bg)  逐碱基信号（原始）
+    bigwig    = GENOMECOV.out.bigwig                        // tuple(meta, plus_bw, minus_bw)  gene-strand（原始）
+    bedgraph_cpm = GENOMECOV.out.bedgraph_cpm               // tuple(meta, plus_cpm.bedgraph, minus_cpm.bedgraph)  标准化
+    bigwig_cpm   = GENOMECOV.out.bigwig_cpm                 // tuple(meta, plus_cpm.bigWig, minus_cpm.bigWig)      标准化
     promoter_counts = SINGLEBASE_COUNT_PROMOTER.out.counts  // per-sample single-base promoter counts
     promoter_matrix = MERGE_PROMOTER.out.matrix             // single-base promoter matrix
     genebody_counts = SINGLEBASE_COUNT_GENEBODY.out.counts  // per-sample single-base genebody counts

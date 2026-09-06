@@ -26,6 +26,11 @@ argv <- add_argument(argv, "--pseudocount",     help = "Pseudocount added to bot
 argv <- add_argument(argv, "--output",          help = "Output PI table (tsv)")
 argv <- parse_args(argv)
 
+# —— test argv ——
+# setwd("/workplace/chenkai/proseq_test/GSE181161/work/99/aff507f00489781dbe850410c7c143")
+# argv$promoter_count <- "/workplace/chenkai/proseq_test/GSE181161/work/b8/f48892cceaba61c349e9a9d753b339/pol2_promoter.matrix.txt"
+# argv$genebody_count <- "/workplace/chenkai/proseq_test/GSE181161/work/28/d44cab97f40bcd04f2927e215e444d/pol2_genebody.matrix.txt"
+
 # ── Compute pausing index ──
 compute_pausing_index <- function(promoter, genebody, min_len, eps) {
     gene_col <- colnames(promoter)[1]
@@ -71,7 +76,7 @@ main <- function(argv) {
     promoter <- read.delim(argv$promoter_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
     genebody <- read.delim(argv$genebody_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
 
-    out <- compute_pausing_index(promoter, genebody, as.integer(argv$min_gene_length), argv$pseudocount)
+    out <- compute_pausing_index(promoter, genebody, min_len = as.integer(argv$min_gene_length), eps = argv$pseudocount)
 
     write.table(out, file = argv$output, sep = "\t", quote = FALSE, row.names = FALSE)
     message("[pausing_index] ", nrow(out), " genes x ", ncol(out), " cols -> ", argv$output)
