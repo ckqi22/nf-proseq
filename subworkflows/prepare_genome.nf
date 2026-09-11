@@ -51,6 +51,6 @@ workflow prepare_genome {
     tss_bed             = GTF2BED.out.tss_bed               // 代表 transcript TSS BED6 → TSS metagene
     promoter_bed        = GTF2BED.out.promoter_bed          // 代表 transcript promoter → pol2_count 单碱基 promoter 计数
     genebody_bed        = GTF2BED.out.genebody_bed          // 代表 transcript genebody → pol2_count 单碱基 genebody 计数
-    gene_bed            = GTF2BED.out.gene_bed              // gene 级跨度 → SIGNAL_TABLE(信号表 intersect)
     genebody_union_saf  = GTF2SAF.out.genebody_union_saf    // 所有 transcript genebody union → quantification(featureCounts)
+    gene_bed            = GTF2BED.out.gene_bed              // gene 级跨度 → SIGNAL_TABLE(信号表 intersect)
 }

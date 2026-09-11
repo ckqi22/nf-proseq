@@ -28,8 +28,6 @@ process FEATURECOUNTS {
     }
 
     """
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
-
     ${params.feature_counts} \\
         -T 2 \\
         ${anno_fmt_args} \\
@@ -37,6 +35,7 @@ process FEATURECOUNTS {
         ${type_args} \\
         ${attr_args} \\
         -s ${strandedness} \\
+        -O \\
         -o ${meta.sample}_${type}.featureCounts.txt \\
         ${bams.join(' ')}
     """

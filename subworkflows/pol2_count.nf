@@ -25,14 +25,11 @@ workflow pol2_count {
     main:
     GENOMECOV(bam)
 
-    // 同一份逐碱基 bedGraph 供两个区域计数进程消费，并 emit 出去（Nextflow 多消费者广播）。
-    SINGLEBASE_COUNT_PROMOTER(GENOMECOV.out.bedgraph, promoter_bed)
-    SINGLEBASE_COUNT_GENEBODY(GENOMECOV.out.bedgraph, genebody_bed)
+    SINGLEBASE_COUNT_PROMOTER(GENOMECOV.out.bigwig, promoter_bed)
+    SINGLEBASE_COUNT_GENEBODY(GENOMECOV.out.bigwig, genebody_bed)
 
-    // 先 map 出纯值再 collect（tuple 通道直接 collect 会被扁平化）；两个分支消费同一通道、
-    // 顺序一致，故第 i 个样本名与第 i 个文件对应。
     promoter_counts_ch = SINGLEBASE_COUNT_PROMOTER.out.counts
-    genebody_counts_ch  = SINGLEBASE_COUNT_GENEBODY.out.counts
+    genebody_counts_ch = SINGLEBASE_COUNT_GENEBODY.out.counts
 
     MERGE_PROMOTER(promoter_counts_ch.map { _meta, f -> f }.collect(),
                    promoter_counts_ch.map { meta, _f -> meta.sample }.collect(),
@@ -46,8 +43,9 @@ workflow pol2_count {
     bigwig    = GENOMECOV.out.bigwig                        // tuple(meta, plus_bw, minus_bw)  gene-strand（原始）
     bedgraph_cpm = GENOMECOV.out.bedgraph_cpm               // tuple(meta, plus_cpm.bedgraph, minus_cpm.bedgraph)  标准化
     bigwig_cpm   = GENOMECOV.out.bigwig_cpm                 // tuple(meta, plus_cpm.bigWig, minus_cpm.bigWig)      标准化
+    bigwig_coverage_cpm = GENOMECOV.out.bigwig_coverage_cpm // tuple(meta, forward_cpm.bigWig, reverse_cpm.bigWig)  覆盖度（配文献 GSE264740）
     promoter_counts = SINGLEBASE_COUNT_PROMOTER.out.counts  // per-sample single-base promoter counts
     promoter_matrix = MERGE_PROMOTER.out.matrix             // single-base promoter matrix
     genebody_counts = SINGLEBASE_COUNT_GENEBODY.out.counts  // per-sample single-base genebody counts
-    genebody_matrix = MERGE_GENEBODY.out.matrix             // single-base genebody matrix (PI)
+    genebody_matrix = MERGE_GENEBODY.out.matrix             // single-base genebody matrix
 }

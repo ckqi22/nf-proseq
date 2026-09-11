@@ -16,12 +16,12 @@ process pausing_differential {
     source /home/ck/miniconda3/bin/activate renv
 
     cat > pause_groups.yml << 'EOF'
-    ${groups_yaml}
-    EOF
+${groups_yaml}
+EOF
 
     cat > pause_comparisons.csv << 'EOF'
-    ${comparisons_csv}
-    EOF
+${comparisons_csv}
+EOF
 
     Rscript ${projectDir}/bin/pausing_differential.R \\
         --pi ${pi_table} \\

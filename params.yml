@@ -4,8 +4,8 @@
 
 # ---- 项目基本信息 ----
 name: "PRO-seq"
-projectNo.: ""
-institute: ""
+projectNo.: "projectNo"
+institute: "institute"
 species: mouse
 build: null
 instrument_model: Illumina_NovaSeq_6000
@@ -15,9 +15,9 @@ gtf:
 genome_fasta:
 
 # ---- Spike-in 配置（无 spike-in 则留空）----
-spike_genome: "dm6"
-spike_fasta: null
-spike_gtf: null
+# spike_genome: "dm6"
+# spike_fasta: null
+# spike_gtf: null
 
 # ---- 分析参数 ----
 adapter: I                     # [I, UMI, HT, SP 择其一]
@@ -26,13 +26,16 @@ sample_sheet: "samplesheet.csv"
 umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
 normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm/rpkm，逗号分隔，默认两者都做）
 
+# ---- 报告 ----
+report: true                  # 开关：false 完全跳过报告步骤
+
 # ---- 质控阈值 ----
 threshold:
   data_amount: 9.3G            # 双端数据量阈值
   data_percentage: 0.8         # 容许偏差比例
   duplicate_rate: 0.6          # 重复率阈值
   mapping_rate: 0.2            # 比对率阈值
-  mRNADE_number: 300           # 差异基因数量阈值
+  de_number: 300               # 差异基因数量阈值
 
 # ---- TSS 暂停指数参数 ----
 tss:
@@ -44,16 +47,14 @@ tss:
 
 # ---- Metagene 分析 ----
 metagene:
-  tool: "deepTools"            # deepTools 或 ngsplot
-  tss_window: 1000             # TSS ± 窗口大小（bp）
-
-# ---- BigWig 参数 ---- 
-#effective_genome_size = 2913022398  # hg38 effective genome size for RPGC normalization
-
+  tss_window: 1000             # profile TSS ± 窗口大小（bp）
+  heatmap_upstream: 50         # heatmap TSS 上游窗口（bp）
+  heatmap_downstream: 150      # heatmap TSS 下游窗口（bp）
+  bin_size: 10                 # bin 大小（bp）
 
 # ---- 差异分析 ----
 diff:
-  tool: "DESeq2"               # edgeR
+  # tool: "DESeq2"               # edgeR
   fc_cutoff: 1.5               # 默认 Fold Change 阈值
   pval_cutoff: 0.05            # 默认 P-value 阈值
 

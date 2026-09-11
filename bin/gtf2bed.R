@@ -75,7 +75,7 @@ build_bed <- function(gene_ids, chr, strand, plus_start, plus_end, minus_start, 
         Start  = pmax(ifelse(plus, plus_start, minus_start), 1) - 1,   # 1-based 闭 → 0-based 半开
         End    = ifelse(plus, plus_end, minus_end),
         GeneID = gene_ids,
-        Score  = ".",
+        Score  = 0,
         Strand = strand,
         stringsAsFactors = FALSE
     )
@@ -99,7 +99,7 @@ main <- function(argv) {
     tss <- ifelse(strand == "-", end, start)
     tss_bed <- data.frame(
         Chr = chr, Start = tss - 1, End = tss,
-        GeneID = gene_ids, Score = ".", Strand = strand,
+        GeneID = gene_ids, Score = 0, Strand = strand,
         stringsAsFactors = FALSE
     )
     write.table(tss_bed, file = file.path(argv$outdir, "tss.bed"), sep = "\t",
@@ -143,7 +143,7 @@ main <- function(argv) {
     # ── gene 级产物（gene.bed，供信号表 intersect）──
     gene_bed <- data.frame(
         Chr = as.character(seqnames(gene_gr)), Start = start(gene_gr) - 1, End = end(gene_gr),
-        GeneID = mcols(gene_gr)$gene_id, Score = ".", Strand = as.character(strand(gene_gr)),
+        GeneID = mcols(gene_gr)$gene_id, Score = 0, Strand = as.character(strand(gene_gr)),
         stringsAsFactors = FALSE
     )
     write.table(gene_bed, file = file.path(argv$outdir, "gene.bed"), sep = "\t",

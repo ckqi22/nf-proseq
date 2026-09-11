@@ -9,6 +9,7 @@ process GENOMECOV {
     tuple val(meta), path("${meta.sample}_plus.bigWig"), path("${meta.sample}_minus.bigWig"), emit: bigwig
     tuple val(meta), path("${meta.sample}_plus_cpm.bedgraph"), path("${meta.sample}_minus_cpm.bedgraph"), emit: bedgraph_cpm
     tuple val(meta), path("${meta.sample}_plus_cpm.bigWig"), path("${meta.sample}_minus_cpm.bigWig"), emit: bigwig_cpm
+    tuple val(meta), path("${meta.sample}_forward_cpm.bigWig"), path("${meta.sample}_reverse_cpm.bigWig"), emit: bigwig_coverage_cpm
 
     script:
     // =========================================================================
@@ -26,8 +27,6 @@ process GENOMECOV {
     def extract = meta.single_end ? "" : "samtools view -f 64 -F 4 -b ${bam} -o r1.bam"
 
     """
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
-
     samtools view -H ${bam} | awk '/^@SQ/ {sub(/SN:/, "", \$2); sub(/LN:/, "", \$3); print \$2, \$3}' | sort -k1,1 > chrom.sizes
 
     ${extract}
@@ -41,10 +40,21 @@ process GENOMECOV {
     awk -v s="\$scale" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_plus.bedgraph  > ${meta.sample}_plus_cpm.bedgraph
     awk -v s="\$scale" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_minus.bedgraph > ${meta.sample}_minus_cpm.bedgraph
 
-    bedGraphToBigWig ${meta.sample}_plus.bedgraph  chrom.sizes ${meta.sample}_plus.bigWig
-    bedGraphToBigWig ${meta.sample}_minus.bedgraph chrom.sizes ${meta.sample}_minus.bigWig
-    bedGraphToBigWig ${meta.sample}_plus_cpm.bedgraph  chrom.sizes ${meta.sample}_plus_cpm.bigWig
-    bedGraphToBigWig ${meta.sample}_minus_cpm.bedgraph chrom.sizes ${meta.sample}_minus_cpm.bigWig
+    bedGraphToBigWig ${meta.sample}_plus.bedgraph       chrom.sizes ${meta.sample}_plus.bigWig
+    bedGraphToBigWig ${meta.sample}_minus.bedgraph      chrom.sizes ${meta.sample}_minus.bigWig
+    bedGraphToBigWig ${meta.sample}_plus_cpm.bedgraph   chrom.sizes ${meta.sample}_plus_cpm.bigWig
+    bedGraphToBigWig ${meta.sample}_minus_cpm.bedgraph  chrom.sizes ${meta.sample}_minus_cpm.bigWig
+
+    # read全长覆盖度
+    # forward = 正链基因信号(reverse read, 正值); reverse = 负链基因信号(forward read, 负值)
+    bedtools genomecov -ibam ${sig_bam} -strand - -bg           | sort -k1,1 -k2,2n > ${meta.sample}_forward.bedgraph
+    bedtools genomecov -ibam ${sig_bam} -strand + -bg -scale -1 | sort -k1,1 -k2,2n > ${meta.sample}_reverse.bedgraph
+
+    awk -v s="\$scale" 'BEGIN{OFS="\t"}{\$4=\$4*s; print}' ${meta.sample}_forward.bedgraph > ${meta.sample}_forward_cpm.bedgraph
+    awk -v s="\$scale" 'BEGIN{OFS="\t"}{\$4=\$4*s; print}' ${meta.sample}_reverse.bedgraph > ${meta.sample}_reverse_cpm.bedgraph
+
+    bedGraphToBigWig ${meta.sample}_forward_cpm.bedgraph chrom.sizes ${meta.sample}_forward_cpm.bigWig
+    bedGraphToBigWig ${meta.sample}_reverse_cpm.bedgraph chrom.sizes ${meta.sample}_reverse_cpm.bigWig
     """
 }
 

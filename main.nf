@@ -13,23 +13,25 @@
 //   6. Pol II active-site single-base distribution
 //   7. Metagene TSS profiles
 //   8. Pausing index
+//   9. Report packaging（Report.R 打包交付；params.report 开关，独立于差异分析）
 //
 // ============================================================
 
-include { parse_config      } from './modules/parse_config.nf'
-include { prepare_genome    } from './subworkflows/prepare_genome.nf'
-include { preprocess        } from './subworkflows/preprocess.nf'
-include { align_bowtie2     } from './subworkflows/align_bowtie2.nf'
-include { quantification    } from './subworkflows/quantification.nf'
-include { diff              } from './subworkflows/diff.nf'
-include { enrich            } from './subworkflows/enrich.nf'
-include { pol2_count        } from './subworkflows/pol2_count.nf'
-include { pause_analysis    } from './subworkflows/pause_analysis.nf'
-include { metagene          } from './subworkflows/metagene.nf'
+include { parse_config                } from './modules/parse_config.nf'
+include { prepare_genome              } from './subworkflows/prepare_genome.nf'
+include { preprocess                  } from './subworkflows/preprocess.nf'
+include { align_bowtie2               } from './subworkflows/align_bowtie2.nf'
+include { quantification              } from './subworkflows/quantification.nf'
+include { diff                        } from './subworkflows/diff.nf'
+include { enrich                      } from './subworkflows/enrich.nf'
+include { pol2_count                  } from './subworkflows/pol2_count.nf'
+include { pause_analysis              } from './subworkflows/pause_analysis.nf'
+include { metagene                    } from './subworkflows/metagene.nf'
+include { metagene_group              } from './subworkflows/metagene_group.nf'
 include { profile as profile_genebody } from './subworkflows/profile.nf'
 include { profile as profile_promoter } from './subworkflows/profile.nf'
-include { SIGNAL_TABLE        } from './modules/signal_table.nf'
-// include { tss_meta          } from './subworkflows/tss_meta.nf'
+include { SIGNAL_TABLE                } from './modules/signal_table.nf'
+include { report as report_package    } from './subworkflows/report.nf'
 
 workflow {
 
@@ -37,7 +39,9 @@ workflow {
     // ========================================================================
     // Step 0: Parse genome configuration -> Read samplesheet
     // ========================================================================
-    config_ch = parse_config().map { cfg_file ->
+    parse_config_raw = parse_config()
+    
+    config_ch = parse_config_raw.map { cfg_file ->
         def config = [:]
         cfg_file.text.split('\n').each { line ->
             def p = line.split(': ', 2)
@@ -143,10 +147,17 @@ workflow {
     // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
-    // Step 7: TSS Metagene profiles
+    // Step 7: TSS Metagene profiles（deepTools：每样本 profile + heatmap；
+    //   组图按 samplesheet 的 group 列，仅 ≥2 样本的显式分组；'unknown'/单样本组不出组图）
     // ========================================================================
-    // tss_meta(pol2_count.out.bigwig, prepare_genome.out.gene_bed)
+    // 同一 channel 直接喂两个子流程（DSL2 多消费者，无需 into 分叉）
     metagene(pol2_count.out.bigwig_cpm, prepare_genome.out.tss_bed)
+    metagene_group(pol2_count.out.bigwig_cpm, prepare_genome.out.tss_bed)
+
+    // 报告用混合通道：publish 块原先在此处 mix 会独占两个源通道，
+    // 上移到这里定义一次，publish 直接引用、报告侧再 mix（各通道保持单一算子消费者）
+    tss_metagene_plot_all   = metagene.out.plot.mix(metagene_group.out.plot)
+    tss_metagene_matrix_all = metagene.out.matrix.mix(metagene_group.out.matrix)
 
     // ========================================================================
     // Step 8: Pause index (single-base promoter / gene body)
@@ -154,33 +165,63 @@ workflow {
     pause_analysis(pol2_count.out.promoter_matrix, pol2_count.out.genebody_matrix, groups_config_ch)
 
     // ========================================================================
-    // Step 9: 逐碱基 Pol II 活性位点信号表（按组聚合 + RPM + gene/transcript 注释）
+    // Step 9: 报告打包（params.report 独立开关；与 compared_groups 无关，
+    //         无差异分析也打包，diff/enrich/plot 相关章节由 Report.R [skip]）
     // ========================================================================
-    bg_files    = pol2_count.out.bedGraph
-                    .map { _meta, plus, minus -> [plus, minus] }
-                    .collect()
-    bg_manifest = pol2_count.out.bedGraph
-                    .map { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }
-                    .collect()
-                    .map { lines -> lines.join('\n') }
-
-    groups_yml_ch = groups_config_ch.map { groups ->
-        def lines = []
-        groups.each { name, samples ->
-            lines << "${name}:"
-            samples.each { s -> lines << "  - ${s}" }
-        }
-        lines.join('\n')
+    if (params.report) {
+        report_package(
+            preprocess.out.statistics,
+            align_bowtie2.out.alignRate,
+            preprocess.out.fastqc_raw_zip,
+            preprocess.out.fastqc_trimmed_zip,
+            preprocess.out.base_quality_plot,
+            diff_result_ch,
+            enrich_result_ch,
+            de_plot_ch,
+            tss_metagene_plot_all.mix(tss_metagene_matrix_all),
+            metagene_group.out.plot,
+            pause_analysis.out.pi_all,
+            prepare_genome.out.promoter_bed.map { _name, file -> file },
+            prepare_genome.out.genebody_bed.map { _name, file -> file },
+            annotation_ch,
+            file(params.report_config),
+            file(params.sample_sheet),
+            parse_config_raw
+        )
+        report_ch = report_package.out.report
+    } else {
+        report_ch = channel.empty()
     }
 
-    SIGNAL_TABLE(bg_files, bg_manifest, groups_yml_ch,
-                 prepare_genome.out.gene_bed, config_ch.map { it.gtf }, annotation_ch)
+    // ========================================================================
+    // Step 10（暂不接入）: 逐碱基 Pol II 活性位点信号表（按组聚合 + RPM + gene/transcript 注释）
+    // ========================================================================
+    // bg_files    = pol2_count.out.bedGraph
+    //                 .map { _meta, plus, minus -> [plus, minus] }
+    //                 .collect()
+    // bg_manifest = pol2_count.out.bedGraph
+    //                 .map { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }
+    //                 .collect()
+    //                 .map { lines -> lines.join('\n') }
+
+    // groups_yml_ch = groups_config_ch.map { groups ->
+    //     def lines = []
+    //     groups.each { name, samples ->
+    //         lines << "${name}:"
+    //         samples.each { s -> lines << "  - ${s}" }
+    //     }
+    //     lines.join('\n')
+    // }
+
+    // SIGNAL_TABLE(bg_files, bg_manifest, groups_yml_ch,
+    //              prepare_genome.out.gene_bed, config_ch.map { it.gtf }, annotation_ch)
 
     // ========================================================================
     // Publish results to output directories
     // ========================================================================
     publish:
     info                = parse_config.out.info
+    representative_gtf  = prepare_genome.out.representative_gtf
     promoter_bed        = prepare_genome.out.promoter_bed.map { _name, file -> file }
     genebody_bed        = prepare_genome.out.genebody_bed.map { _name, file -> file }
     genebody_union_saf  = prepare_genome.out.genebody_union_saf.map { _name, file -> file }
@@ -217,19 +258,18 @@ workflow {
 
     coverage_bw         = pol2_count.out.bigwig
     coverage_bw_cpm     = pol2_count.out.bigwig_cpm
-    pol2_signal_table   = SIGNAL_TABLE.out.signal_table
+    coverage_full_bw    = pol2_count.out.bigwig_coverage_cpm
+    // pol2_signal_table   = SIGNAL_TABLE.out.signal_table
 
     genebody_profile    = profile_genebody.out.annotated
     // promoter_profile    = profile_promoter.out.annotated
 
-    // tss_meta_matrix     = tss_meta.out.matrix
-    // tss_meta_profile    = tss_meta.out.profile
-    tss_metagene_plot   = metagene.out.plot
-    tss_metagene_matrix = metagene.out.matrix
-
+    tss_metagene_plot   = tss_metagene_plot_all
+    tss_metagene_matrix = tss_metagene_matrix_all
 
     pi_all              = pause_analysis.out.pi_all
     pi_boxplot          = pause_analysis.out.pi_boxplot
+    report              = report_ch
 
 }
 
@@ -237,16 +277,18 @@ workflow {
 // Output directive
 // ------------------------------------------------------------------
 output {
-    info                { path "01.info/" }
-    promoter_bed        { path "01.info/" }
-    genebody_bed        { path "01.info/" }
-    genebody_union_saf  { path "01.info/" }
-    gene_bed            { path "01.info/" }
+    info                { path "01.Info/" }
+    representative_gtf  { path "01.Info/" }
+    promoter_bed        { path "01.Info/" }
+    genebody_bed        { path "01.Info/" }
+    genebody_union_saf  { path "01.Info/" }
+    gene_bed            { path "01.Info/" }
 
-    fastqc_raw_zip      { path "02.fastqc/" }
-    fastqc_raw_html     { path "02.fastqc/" }
-    fastqc_trimmed_zip  { path "02.fastqc/" }
-    fastqc_trimmed_html { path "02.fastqc/" }
+    fastqc_raw_zip      { path "02.Fastqc/" }
+    fastqc_raw_html     { path "02.Fastqc/" }
+    fastqc_trimmed_zip  { path "02.Fastqc/" }
+    fastqc_trimmed_html { path "02.Fastqc/" }
+
     fastp_json          { path "03.Data_QC/" }
     fastp_html          { path "03.Data_QC/" }
     fastp_log           { path "03.Data_QC/" }
@@ -276,15 +318,14 @@ output {
 
     coverage_bw         { path "08.Pol2_coverage/" }
     coverage_bw_cpm     { path "08.Pol2_coverage/" }
-    pol2_signal_table   { path "08.Pol2_coverage/" }
+    coverage_full_bw    { path "08.Pol2_coverage/" }
+    // pol2_signal_table   { path "08.Pol2_coverage/" }
 
-    // tss_meta_matrix     { path "09.TSS_Metagene/" }
-    // tss_meta_profile    { path "09.TSS_Metagene/" }
     tss_metagene_plot   {path "09.TSS_Metagene/"}
     tss_metagene_matrix {path "09.TSS_Metagene/"}
 
     pi_all              { path "10.Pausing_Index/" }
     pi_boxplot          { path "10.Pausing_Index/" }
 
-
+    report              { path "11.Report/" }
 }

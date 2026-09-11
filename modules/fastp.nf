@@ -33,9 +33,7 @@ process FASTP {
         detect_adapter_args = "--detect_adapter_for_pe"
     }
     """
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
-    
-    fastp \\
+    ${params.fastp} \\
     ${reads_args} \\
     ${trimmed_reads_args} \\
     --json ${meta.sample}.fastp.json \\

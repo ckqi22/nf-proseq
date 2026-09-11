@@ -12,8 +12,7 @@ process PROCESS_FASTP {
     """
     mkdir -p stat
     
-    source /workplace/hanguojun/mambaforge/bin/activate snakemake
-    python3 /workplace/pipeline/WTSS/scripts/fastp_results_organise.py \\
+    ${params.python} /workplace/pipeline/WTSS/scripts/fastp_results_organise.py \\
         -i ./ \\
         -o ./ \\
         --q30_thres 0.7 \\

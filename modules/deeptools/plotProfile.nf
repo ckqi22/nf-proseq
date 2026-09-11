@@ -1,21 +1,28 @@
 process PLOTPROFILE {
     tag "${meta.sample}"
 
+    conda '/workplace/hanguojun/mambaforge/envs/deeptools'
+
     input:
     tuple val(meta), path(matrix)
 
     output:
-    tuple val(meta), path("${meta.sample}_TSS_meta.pdf"), emit: profile
+    tuple val(meta), path("${meta.sample}_metagene_profile.{pdf,tiff}"), emit: profile
+    tuple val(meta), path("${meta.sample}_metagene_profile_matrix.tsv"), emit: matrix
 
     script:
     """
-    source /workplace/hanguojun/mambaforge/bin/activate deeptools
-
     plotProfile \\
         --matrixFile ${matrix} \\
-        --outFileName ${meta.sample}_TSS_meta.pdf \\
-        --perGroup \\
         --plotType lines \\
-        --dpi 300
+        --dpi 300 \\
+        --yAxisLabel "5' end CPM" \\
+        --outFileName ${meta.sample}_metagene_profile.pdf \\
+        --outFileNameData ${meta.sample}_metagene_profile_matrix.tsv
+
+    convert \\
+        -density 300 -quality 100 \\
+        ${meta.sample}_metagene_profile.pdf \\
+        ${meta.sample}_metagene_profile.tiff
     """
 }
