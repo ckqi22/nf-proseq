@@ -17,9 +17,6 @@ process COMPUTEMATRIX {
 
     script:
     // 正/负链基因分开算（各用对应链的 bigWig），再 rbind 合并为单 group 矩阵：
-    // 两矩阵 group label 均为 "genes"（deepTools 对单 -R BED 强制默认组），
-    // rbind 的 insertMatrix 只插行不碰 sample_labels → 合并后 sample label
-    // 保持第一个矩阵的 ${meta.sample}，图例干净。
     """
     awk '\$6=="+"' ${tss_bed} > regions_plus.bed
     awk '\$6=="-"' ${tss_bed} > regions_minus.bed

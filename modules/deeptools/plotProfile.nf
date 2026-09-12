@@ -14,7 +14,7 @@ process PLOTPROFILE {
     """
     plotProfile \\
         --matrixFile ${matrix} \\
-        --plotType lines \\
+        --plotType se \\
         --dpi 300 \\
         --yAxisLabel "5' end CPM" \\
         --outFileName ${meta.sample}_metagene_profile.pdf \\
