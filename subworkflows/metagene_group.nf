@@ -17,7 +17,9 @@
 include { BIGWIGAVERAGE } from '../modules/deeptools/bigwigAverage'
 include { COMPUTEMATRIX as COMPUTEMATRIX_PROFILE } from '../modules/deeptools/computeMatrix'
 include { COMPUTEMATRIX as COMPUTEMATRIX_HEATMAP } from '../modules/deeptools/computeMatrix'
+include { COMPUTEMATRIX as COMPUTEMATRIX_COMBINED } from '../modules/deeptools/computeMatrix'
 include { PLOTPROFILE }   from '../modules/deeptools/plotProfile'
+include { PLOTPROFILE as PLOTPROFILE_COMBINED }     from '../modules/deeptools/plotProfile'
 include { PLOTHEATMAP }   from '../modules/deeptools/plotHeatmap'
 
 workflow metagene_group {
@@ -26,7 +28,8 @@ workflow metagene_group {
     tss_bed      // channel: path(tss.bed)（BED6，第 6 列 strand）
 
     main:
-    def pw = params.metagene.tss_window         ?: 1000   // profile 窗口（±pw）
+    def pu = params.metagene.profile_upstream   ?: 1000   // profile TSS 上游（bp）
+    def pd = params.metagene.profile_downstream ?: 1000   // profile TSS 下游（bp）
     def hu = params.metagene.heatmap_upstream   ?: 50     // heatmap 上游
     def hd = params.metagene.heatmap_downstream ?: 150    // heatmap 下游
     def bs = params.metagene.bin_size           ?: 10     // bin 大小（bp）
@@ -45,8 +48,8 @@ workflow metagene_group {
                   .map { g, metas, plusses, minusses -> [[sample: g, group: g], plusses, minusses] }
     avg_bw = BIGWIGAVERAGE(ch_avg)
 
-    // ---- profile 矩阵（±pw）----
-    profile_matrix = COMPUTEMATRIX_PROFILE(avg_bw, tss_bed, pw, pw, bs, 'profile')
+    // ---- profile 矩阵（上游 pu / 下游 pd）----
+    profile_matrix = COMPUTEMATRIX_PROFILE(avg_bw, tss_bed, pu, pd, bs, 'profile')
 
     // ---- heatmap 矩阵（上游 hu / 下游 hd）----
     heatmap_matrix = COMPUTEMATRIX_HEATMAP(avg_bw, tss_bed, hu, hd, bs, 'heatmap')
@@ -55,9 +58,24 @@ workflow metagene_group {
     PLOTPROFILE(profile_matrix)
     PLOTHEATMAP(heatmap_matrix)
 
+    // ---- 叠加图：所有组一张 profile（组平均 bigWig 多样本矩阵 → 一图多线）----
+    // 收集全部组平均 bigWig → 单个 List 传给 COMPUTEMATRIX；无 ≥2 样本分组时 avg_bw
+    // 为空 → toList 得空列表，filter 跳过（不产空 all_groups 图）
+    combine_all_groups = avg_bw
+        .map { meta, p, m -> [meta.sample, p, m] }
+        .toList()
+        .filter { l -> l.size() > 0 }
+        .map { list ->
+            [[sample: 'all_groups', plot_type: 'lines', per_group: true, sample_names: list.collect { x -> x[0] }],
+             list.collect { x -> x[1] }, list.collect { x -> x[2] }]
+        }
+    cm_combined = COMPUTEMATRIX_COMBINED(combine_all_groups, tss_bed, pu, pd, bs, 'profile')
+    PLOTPROFILE_COMBINED(cm_combined)
+
     emit:
     // 裸 path（无 meta 包装），与按样本版一致 → main.nf 输出块（09.TSS_Metagene/）
     // 直接消费。merged 原始矩阵与 heatmap sorted_regions.bed 并入 matrix 一并交付。
+    avg_bigwig = avg_bw   // tuple(meta, ${group}_plus_cpm.bigWig, ${group}_minus_cpm.bigWig) — 组平均 CPM bigWig
     plot   = PLOTPROFILE.out.profile.mix(PLOTHEATMAP.out.plot)
                   .map { _meta, f -> f }
     matrix = PLOTPROFILE.out.matrix
@@ -66,4 +84,6 @@ workflow metagene_group {
                        profile_matrix,
                        heatmap_matrix)
                   .map { _meta, f -> f }
+    combined_plot   = PLOTPROFILE_COMBINED.out.profile.map { _meta, f -> f }
+    combined_matrix = PLOTPROFILE_COMBINED.out.matrix.map  { _meta, f -> f }
 }

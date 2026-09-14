@@ -21,6 +21,7 @@ include { parse_config                } from './modules/parse_config.nf'
 include { prepare_genome              } from './subworkflows/prepare_genome.nf'
 include { preprocess                  } from './subworkflows/preprocess.nf'
 include { align_bowtie2               } from './subworkflows/align_bowtie2.nf'
+include { spikein                     } from './subworkflows/spikein.nf'
 include { quantification              } from './subworkflows/quantification.nf'
 include { diff                        } from './subworkflows/diff.nf'
 include { enrich                      } from './subworkflows/enrich.nf'
@@ -54,6 +55,9 @@ workflow {
         println " bowtie2_index   : ${config.bowtie2_index}"
         println " gtf             : ${config.gtf}"
         println " gene_annotation : ${config.gene_annotation}"
+        println " spike_fasta     : ${config.spike_fasta}"
+        println " spike_index     : ${config.spike_index}"
+        println " spike_chroms    : ${config.spike_chroms}"
         println "============================================"
         return config
     }
@@ -101,7 +105,28 @@ workflow {
     // Step 2: alignment
     // ========================================================================
     align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
-        
+
+    // ========================================================================
+    // Spike-in（条件分支）：params.spike_genome 配置时，统计每样本 spike reads，
+    // 把 spike_count 并入 meta 供 GENOMECOV 缩放 bigWig，并生成因子表供 profile 表缩放；
+    // 未配置时照旧（库大小 CPM），spike_factors_ch 给空串。
+    // ========================================================================
+    spike_enabled = params.spike_genome?.trim() || params.spike_fasta?.trim() || params.spike_index?.trim()
+
+    if (spike_enabled) {
+        spike = spikein(align_bowtie2.out.bam_bai, prepare_genome.out.spike_chroms)
+        // spike_count 并入 meta（新 map，不改共享 meta，避免污染 quantification 消费的 meta）
+        bam_for_pol2 = align_bowtie2.out.bam
+            .join(spike.counts.map { m, f -> [m, f.text.trim().toInteger()] }, by: [0])
+            .map { meta, bam, c -> [meta + [spike_count: c], bam] }
+        spike_factors_ch = spike.factors.map { it.toRealPath().toString() }
+        spike_factors_out = spike.factors
+    } else {
+        bam_for_pol2 = align_bowtie2.out.bam
+        spike_factors_ch = channel.value('')
+        spike_factors_out = channel.empty()
+    }
+
     // ========================================================================
     // Step 3: quantification (per-sample featureCounts -> merged gene body matrix)
     // ========================================================================
@@ -139,20 +164,25 @@ workflow {
     // Step 6: Pol II active-site single-base distribution
     //   (produces per-base bedGraph/bigWig + single-base promoter/genebody matrices for PI)
     // ========================================================================
-    pol2_count(align_bowtie2.out.bam, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed)
+    pol2_count(bam_for_pol2, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed)
 
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
     methods = params.normalize_methods ?: 'cpm,fpkm'
-    profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody')
+    profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody', spike_factors_ch)
     // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
     // Step 7: TSS Metagene profiles（deepTools：每样本 profile + heatmap；
     //   组图按 samplesheet 的 group 列，仅 ≥2 样本的显式分组；'unknown'/单样本组不出组图）
     // ========================================================================
+    // signal_mode：single=单碱基5'端(默认) / full=full read 全长覆盖度（metagene 用 CPM 版）
+    signal_mode = (params.signal_mode?.trim() ?: 'single')
+
     // 同一 channel 直接喂两个子流程（DSL2 多消费者，无需 into 分叉）
-    metagene(pol2_count.out.bigwig_cpm, prepare_genome.out.tss_bed)
-    metagene_group(pol2_count.out.bigwig_cpm, prepare_genome.out.tss_bed)
+    metagene_bw = (signal_mode == 'full') ? pol2_count.out.bigwig_coverage_cpm
+                                          : pol2_count.out.bigwig_cpm
+    metagene(metagene_bw, prepare_genome.out.tss_bed)
+    metagene_group(metagene_bw, prepare_genome.out.tss_bed)
 
     // 报告用混合通道：publish 块原先在此处 mix 会独占两个源通道，
     // 上移到这里定义一次，publish 直接引用、报告侧再 mix（各通道保持单一算子消费者）
@@ -264,8 +294,13 @@ workflow {
     genebody_profile    = profile_genebody.out.annotated
     // promoter_profile    = profile_promoter.out.annotated
 
+    spike_factors       = spike_factors_out
+
     tss_metagene_plot   = tss_metagene_plot_all
     tss_metagene_matrix = tss_metagene_matrix_all
+    group_avg_bigwig    = metagene_group.out.avg_bigwig
+    metagene_combined_plot   = metagene.out.combined_plot.mix(metagene_group.out.combined_plot)
+    metagene_combined_matrix = metagene.out.combined_matrix.mix(metagene_group.out.combined_matrix)
 
     pi_all              = pause_analysis.out.pi_all
     pi_boxplot          = pause_analysis.out.pi_boxplot
@@ -308,6 +343,7 @@ output {
     genebody_matrix         { path "05.Quantification/" }
     genebody_profile        { path "05.Quantification/" }
     // promoter_profile        { path "05.Quantification/" }
+    spike_factors           { path "05.Quantification/" }
 
     diff_result         { path "06.Differential_Expression/" }
     checkde_result      { path "06.Differential_Expression/" }
@@ -323,6 +359,9 @@ output {
 
     tss_metagene_plot   {path "09.TSS_Metagene/"}
     tss_metagene_matrix {path "09.TSS_Metagene/"}
+    group_avg_bigwig    { path "09.TSS_Metagene/" }
+    metagene_combined_plot   { path "09.TSS_Metagene/" }
+    metagene_combined_matrix { path "09.TSS_Metagene/" }
 
     pi_all              { path "10.Pausing_Index/" }
     pi_boxplot          { path "10.Pausing_Index/" }

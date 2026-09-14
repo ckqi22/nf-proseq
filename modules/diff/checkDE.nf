@@ -7,7 +7,7 @@ process CHECKDE {
     tuple path("checkDE_result.txt"), path(diff_dir), emit: checked
 
     script:
-    def de_number = params.de_number ?: 100
+    def de_number = params.threshold?.de_number ?: 100
     """
     set +e
     bash /workplace/pipeline/WTSS/scripts/checkDE.sh ${diff_dir}/ ${de_number} checkDE.txt > checkDE.log 2>&1

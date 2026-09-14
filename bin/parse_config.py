@@ -14,6 +14,11 @@ def main():
     parser.add_argument("--gtf", help="Direct GTF file path, overrides config")
     parser.add_argument("--genome_fasta", help="Direct genome FASTA path (optional)")
     parser.add_argument("--output", help="Write config to this file (key: value lines)")
+    parser.add_argument("--spike_genome", help="Spike-in genome section name in information_config (e.g., dm6)")
+    parser.add_argument("--spike_fasta", help="Direct spike FASTA path (overrides --spike_genome lookup)")
+    parser.add_argument("--spike_gtf", help="Direct spike GTF path (optional, reserved)")
+    parser.add_argument("--spike_index", help="Pre-built combined (main+spike) bowtie2 index prefix; skips on-the-fly concat+build")
+    parser.add_argument("--spike_chroms", help="Spike chromosome name list file (required with --spike_index)")
     args = parser.parse_args()
 
     # -------- 读取 species_config ----------
@@ -53,6 +58,39 @@ def main():
     if args.genome_fasta:
         genome_fasta = args.genome_fasta
 
+    # -------- 解析 spike-in 参考（可选；无 spike 则输出空串）---------
+    # spike_genome 是 information_config 的 section 名（与 --build 同一语义，直接查段）；
+    # 不经过 species_config 的 species→section 映射（spike 通常是跨物种参考，如 dm6）。
+    spike_fasta = ''
+    spike_gtf   = ''
+    # 直接给 spike_fasta 路径时优先，完全跳过 spike_genome 段查找；
+    # 只有没给 fasta 时才用 spike_genome 去 information_config 查段。
+    if args.spike_fasta:
+        spike_fasta = args.spike_fasta
+    elif args.spike_genome:
+        spike_section = None
+        if args.spike_genome in info_config:
+            spike_section = args.spike_genome
+        else:
+            for sec in info_config.sections():
+                if sec.lower() == args.spike_genome.lower():
+                    spike_section = sec
+                    break
+        if spike_section is None:
+            sys.exit(f"ERROR: Spike section '{args.spike_genome}' not found in information_config "
+                     f"(set spike_genome to a valid section, or give spike_fasta directly)")
+        spike_fasta = info_config[spike_section].get('genome_fasta', '')
+        spike_gtf   = info_config[spike_section].get('gtf', '')
+    if args.spike_gtf:
+        spike_gtf = args.spike_gtf
+
+    # 预构建合并索引（可选）：spike_index 给「主+spike 合并」索引前缀，跳过现建 concat+build；
+    # spike_chroms 给 spike 染色体名单文件（配合 spike_index，不再从 spike_fasta 派生）。
+    spike_index  = args.spike_index or ''
+    spike_chroms = args.spike_chroms or ''
+    if spike_index and not spike_chroms:
+        sys.exit("ERROR: --spike_index requires --spike_chroms (spike chromosome name list file)")
+
     # 输出键值对（一行一个）
     lines = [
         f"build: {species_index}",
@@ -61,6 +99,10 @@ def main():
         f"gene_annotation: {gene_annotation}",
         f"rRNA_index: {rrna_index}",
         f"genome_fasta: {genome_fasta}",
+        f"spike_fasta: {spike_fasta}",
+        f"spike_gtf: {spike_gtf}",
+        f"spike_index: {spike_index}",
+        f"spike_chroms: {spike_chroms}"
     ]
     for line in lines:
         print(line)
@@ -70,9 +112,6 @@ def main():
         with open(args.output, 'w') as f:
             for line in lines:
                 f.write(line + '\n')
-
-    # TODO(spike-in): 未来在此解析 spike 拼接（主基因组 + spike fasta/gtf 合并），
-    # 输出 combined fasta/gtf 路径，供 prepare_genome.nf 的 CONCAT 扩展点使用。
 
 if __name__ == "__main__":
     main()

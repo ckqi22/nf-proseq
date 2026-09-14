@@ -34,6 +34,7 @@ workflow align_bowtie2{
     emit:
     bam         = BOWTIE2_ALIGN.out.bam
     bai         = BOWTIE2_ALIGN.out.bai
+    bam_bai     = bam_bai_ch                        // tuple(meta, bam, bai) — 供 SPIKEIN_COUNT(idxstats 需 .bai)
     alignRate   = BOWTIE2_ALIGN.out.alignRate
     flagstat    = STAT.out.flagstat
     idxstats    = STAT.out.idxstats

@@ -25,8 +25,13 @@ workflow pol2_count {
     main:
     GENOMECOV(bam)
 
-    SINGLEBASE_COUNT_PROMOTER(GENOMECOV.out.bigwig, promoter_bed)
-    SINGLEBASE_COUNT_GENEBODY(GENOMECOV.out.bigwig, genebody_bed)
+    // signal_mode：single=单碱基5'端(默认) / full=full read 全长覆盖度
+    // PI 计数用 raw bigWig（singlebase_count 里 bigWigAverageOverBed 求和 + int 取整，
+    // 需整数计数，不能用 CPM 浮点版）
+    def mode = (params.signal_mode?.trim() ?: 'single') == 'full' ? 'full' : 'single'
+
+    SINGLEBASE_COUNT_PROMOTER(mode == 'full' ? GENOMECOV.out.bigwig_full : GENOMECOV.out.bigwig, promoter_bed)
+    SINGLEBASE_COUNT_GENEBODY(mode == 'full' ? GENOMECOV.out.bigwig_full : GENOMECOV.out.bigwig, genebody_bed)
 
     promoter_counts_ch = SINGLEBASE_COUNT_PROMOTER.out.counts
     genebody_counts_ch = SINGLEBASE_COUNT_GENEBODY.out.counts

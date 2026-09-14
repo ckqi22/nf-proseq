@@ -16,33 +16,39 @@ process COMPUTEMATRIX {
     tuple val(meta), path("${meta.sample}_${label}_TSS_merged_matrix.gz"), emit: matrix
 
     script:
-    // 正/负链基因分开算（各用对应链的 bigWig），再 rbind 合并为单 group 矩阵：
+    // 正/负链基因分开算（各用对应链的 bigWig），再 rbind 合并为单 group 矩阵。
+    // 兼容单样本（单个 Path）与多样本叠加（List<Path>）：统一归一化为列表；
+    // 样本标签取 meta.sample_names（叠加时由 metagene.nf / metagene_group.nf 写入），
+    // 单样本退化为 [meta.sample]。
+    def plus_list  = (plus_bw instanceof List) ? plus_bw : [plus_bw]
+    def minus_list = (minus_bw instanceof List) ? minus_bw : [minus_bw]
+    def names      = (meta.sample_names instanceof List) ? meta.sample_names : [meta.sample]
     """
     awk '\$6=="+"' ${tss_bed} > regions_plus.bed
     awk '\$6=="-"' ${tss_bed} > regions_minus.bed
 
     computeMatrix reference-point \\
         -R regions_plus.bed \\
-        -S ${plus_bw} \\
+        -S ${plus_list.join(' ')} \\
         --referencePoint TSS \\
         --upstream ${upstream} \\
         --downstream ${downstream} \\
         --binSize ${bin_size} \\
         --missingDataAsZero \\
-        --samplesLabel ${meta.sample} \\
+        --samplesLabel ${names.join(' ')} \\
         -p ${task.cpus} \\
         -o ${meta.sample}_plus_${label}_TSS_matrix.gz
 
     computeMatrix reference-point \\
         -R regions_minus.bed \\
-        -S ${minus_bw} \\
+        -S ${minus_list.join(' ')} \\
         --referencePoint TSS \\
         --upstream ${upstream} \\
         --downstream ${downstream} \\
         --binSize ${bin_size} \\
         --scale -1 \\
         --missingDataAsZero \\
-        --samplesLabel ${meta.sample} \\
+        --samplesLabel ${names.join(' ')} \\
         -p ${task.cpus} \\
         -o ${meta.sample}_minus_${label}_TSS_matrix.gz
 
@@ -61,3 +67,5 @@ process COMPUTEMATRIX {
 //   NaN×(-1) 仍为 NaN，被 --missingDataAsZero 填 0，与 R 版 abs-逐位置-再 bin 数学等价。
 // - 矩阵列数 = (upstream + downstream) / binSize，如 ±1000 / 10 → 200 列。
 // - rbind 需 deepTools >= 3.1.2（v3.1.1 有 group_labels 未更新的 bug）。
+// - 多样本叠加：metagene.nf / metagene_group.nf 把「全部样本/组的 bigWig」收集成 List
+//   后传 -S，两侧 --samplesLabel 同序，rbind 按 region 行堆叠、保留 N 个 sample 列 → plotProfile 一图多线。

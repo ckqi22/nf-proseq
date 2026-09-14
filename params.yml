@@ -15,16 +15,20 @@ gtf:
 genome_fasta:
 
 # ---- Spike-in 配置（无 spike-in 则留空）----
-# spike_genome: "dm6"
-# spike_fasta: null
-# spike_gtf: null
+# spike_genome 填 information_config 里的 section 名（如 dm6）；留空则完全跳过 spike-in。
+spike_genome: 
+spike_fasta:             # 可选：直接给 spike fasta 路径，覆盖 DB 解析
+spike_gtf:               # 预留（本次不参与计数，idxstats 按染色体统计）
+spike_index:             # 可选：预构建「主+spike 合并」bowtie2 index 前缀；给则跳过 concat+build
+spike_chroms:            # 可选：spike 染色体名单文件（配合 spike_index，不再从 spike_fasta 派生）
 
 # ---- 分析参数 ----
 adapter: I                     # [I, UMI, HT, SP 择其一]
 adapter_sequence: "TGGAATTCTCGGGTGCCAAGG"   # Illumina TruSeq small RNA 3' 接头 (RA3)，仅 adapter=I 时生效
 sample_sheet: "samplesheet.csv"
 umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
-normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm/rpkm，逗号分隔，默认两者都做）
+normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm，逗号分隔，默认两者都做）
+signal_mode: single            # 后续分析(metagene/PI)信号类型：single=单碱基5'端(默认) / full=full read 全长覆盖度
 
 # ---- 报告 ----
 report: true                  # 开关：false 完全跳过报告步骤
@@ -47,14 +51,14 @@ tss:
 
 # ---- Metagene 分析 ----
 metagene:
-  tss_window: 1000             # profile TSS ± 窗口大小（bp）
+  profile_upstream: 1000       # profile TSS 上游窗口（bp）
+  profile_downstream: 1000     # profile TSS 下游窗口（bp）
   heatmap_upstream: 50         # heatmap TSS 上游窗口（bp）
   heatmap_downstream: 150      # heatmap TSS 下游窗口（bp）
   bin_size: 10                 # bin 大小（bp）
 
 # ---- 差异分析 ----
 diff:
-  # tool: "DESeq2"               # edgeR
   fc_cutoff: 1.5               # 默认 Fold Change 阈值
   pval_cutoff: 0.05            # 默认 P-value 阈值
 
