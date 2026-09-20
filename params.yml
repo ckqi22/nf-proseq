@@ -21,6 +21,7 @@ spike_fasta:             # 可选：直接给 spike fasta 路径，覆盖 DB 解
 spike_gtf:               # 预留（本次不参与计数，idxstats 按染色体统计）
 spike_index:             # 可选：预构建「主+spike 合并」bowtie2 index 前缀；给则跳过 concat+build
 spike_chroms:            # 可选：spike 染色体名单文件（配合 spike_index，不再从 spike_fasta 派生）
+spike_min_fraction: 0.0  # spike-in reads 占比下限（spike_count / total_mapped），<= 此值报错；0.0 = 仅拒绝 0 spike reads
 
 # ---- 分析参数 ----
 adapter: I                     # [I, UMI, HT, SP 择其一]
@@ -28,7 +29,7 @@ adapter_sequence: "TGGAATTCTCGGGTGCCAAGG"   # Illumina TruSeq small RNA 3' 接�
 sample_sheet: "samplesheet.csv"
 umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
 normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm，逗号分隔，默认两者都做）
-signal_mode: single            # 后续分析(metagene/PI)信号类型：single=单碱基5'端(默认) / full=full read 全长覆盖度
+signal_mode: single            # 后续分析(metagene/PI)信号类型：single=单碱基5'端(默认) / full=full read 全长覆盖度 / both=两者都算(对比用)
 
 # ---- 报告 ----
 report: true                  # 开关：false 完全跳过报告步骤
@@ -46,8 +47,15 @@ tss:
   upstream: 50                 # TSS 上游窗口（bp），默认 TSS-50bp
   downstream: 300              # TSS 下游窗口（bp），默认 TSS+300bp
   genebody_offset: 301         # 基因体起始偏移（bp），TSS+301bp 起
-  min_gene_length: 800         # 最小基因长度（bp），短于此值不计算 PI
+  min_genebody_length: 800     # 最小 genebody 长度（bp），短于此值不计算 PI（实际基因全长阈值 = 此值 + genebody_offset）
   pi_pseudocount: 1e-3         # PI 分子分母同加的伪计数，避免 genebody=0 时分母为 0
+
+# ---- 信号表（逐碱基 Pol II 信号表）----
+signal_table:
+  active_frac: 0.005          # 活跃基因：genebody 密度下限 = 候选基因密度中位数 × active_frac
+  peak_frac: 0.1              # 位点阈值：组均值 Signal >= 基因 pause 峰 × peak_frac
+  noise_quantile: 0.9         # 位点噪声线 = 全体窗口位点 Signal 的该分位（0 = 关）
+  min_reps: 2                 # 组内 >= min_reps 个重复达阈值（不足时要求全部）
 
 # ---- Metagene 分析 ----
 metagene:

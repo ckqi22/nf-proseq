@@ -43,6 +43,11 @@ workflow prepare_genome {
     // 注释（BED/SAF/GTF）只用主 GTF，spike 染色体不进 SAF/BED，不污染计数。
     fasta = config_ch.map { it -> [ [id: it.build], it.genome_fasta ] }
 
+    // chrom.sizes（主基因组，无 spike）：从参考 FASTA 的 .fai 索引现取（samtools faidx 产物，
+    // 染色体集 = 实际比对基因组，不含 DB genomesizefile 里的 non-m6a/m6a 等额外 contig）。
+    // 5 列 .fai 由下游 BIGWIGAVERAGE cut -f1,2 转成 2 列 chrom.sizes。
+    chrom_sizes = config_ch.map { it -> file("${it.genome_fasta}.fai") }
+
     def spike_split = config_ch.branch {
         has_spike: (it.spike_fasta ?: '').trim() || (it.spike_index ?: '').trim()
         no_spike:  !((it.spike_fasta ?: '').trim() || (it.spike_index ?: '').trim())
@@ -72,6 +77,7 @@ workflow prepare_genome {
     index               = index
     spike_chroms        = spike_chroms
     fasta               = fasta
+    chrom_sizes         = chrom_sizes
     representative_gtf  = LONGEST_TX.out.representative_gtf // 代表转录本 GTF（供 GTF2BED / 下游）
     tss_bed             = GTF2BED.out.tss_bed               // 代表 transcript TSS BED6 → TSS metagene
     promoter_bed        = GTF2BED.out.promoter_bed          // 代表 transcript promoter → pol2_count 单碱基 promoter 计数

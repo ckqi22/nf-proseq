@@ -3,7 +3,7 @@
 # TT-Seq 通用 txt -> xlsx 转换 (openxlsx) —— 唯一 xlsx 风格源
 # 交付格式: 标题 + 注释 + 彩色表头（仿公司样式）+ 数字格式
 #   - 简单表 (read_statistics 等): 表头统一浅蓝 #ADD8E6
-#   - 表达谱 (.Count/.Corrected/.Fpkm/.Cpm 分组): 多色表头
+#   - 表达谱 (.Count/.Corrected/.Fpkm/.Cpm/.Signal 分组): 多色表头
 #   - --group_by <列>: 按该列分 sheet（每个取值一个 sheet，该列不进 sheet）
 #   - --sort_by <列>: 按该列排序（如 Sample）
 #   - 自动数字格式：列名匹配 Ratio|Rate|Q30|percentage → 百分比；Reads|Bases → 千分位
@@ -21,6 +21,7 @@ option_list <- list(
   make_option(c("--output"), type = "character", help = "输出 xlsx 路径"),
   make_option(c("--title"),  type = "character", default = "", help = "标题（置顶合并加粗）"),
   make_option(c("--note"),   type = "character", default = "", help = "注释（标题下方合并自动换行）"),
+  make_option(c("--note_file"), type = "character", default = "", help = "从文件读取注释（--note 为空时生效）"),
   make_option(c("--title_align"), type = "character", default = "left", help = "标题对齐方式 left/center/right（默认 left）"),
   make_option(c("--group_by"), type = "character", default = "", help = "按此列分 sheet（每个取值一个 sheet）"),
   make_option(c("--sort_by"),  type = "character", default = "", help = "按此列排序（如 Sample）"),
@@ -29,6 +30,10 @@ option_list <- list(
   make_option(c("--sheet_strip"), type = "integer", default = 0, help = "sheet 名去掉文件名尾部 N 个 _ 段（差异表用）")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
+
+if (!nzchar(opt$note) && nzchar(opt$note_file) && file.exists(opt$note_file)) {
+  opt$note <- paste(readLines(opt$note_file, warn = FALSE), collapse = "\n")
+}
 
 read_df <- function(path) {
   read.table(path, header = TRUE, sep = "\t", quote = "", comment.char = "",
@@ -40,6 +45,7 @@ group_of <- function(name) {
   if (grepl("\\.Corrected$", name)) "corrected"
   else if (grepl("\\.Count$",  name)) "count"
   else if (grepl("\\.Fpkm$",    name)) "fpkm"
+  else if (grepl("\\.Signal$",  name)) "signal"
   else if (grepl("\\.Cpm$",     name)) "cpm"
   else "default"
 }
@@ -47,6 +53,7 @@ palette <- c(default   = "#ADD8E6",  # 浅蓝（Gene_id / 注释列 / 简单表�
             count     = "#FFFF00",  # 黄
             corrected = "#F4B183",  # 橙
             fpkm      = "#A9D08E",  # 绿
+            signal    = "#B39DDB",  # 紫（.Signal 独立新色）
             cpm       = "#D9D9D9")  # 灰
 
 wb <- createWorkbook()

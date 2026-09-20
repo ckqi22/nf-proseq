@@ -21,7 +21,7 @@ suppressWarnings(suppressMessages({
 argv <- arg_parser("Compute length-normalized PRO-seq pausing index")
 argv <- add_argument(argv, "--promoter_count",  help = "Promoter count matrix (gene_id, length, samples)")
 argv <- add_argument(argv, "--genebody_count",  help = "Genebody count matrix (gene_id, length, samples)")
-argv <- add_argument(argv, "--min_gene_length", help = "Minimum gene body length (bp)", default = 800, type = "integer")
+argv <- add_argument(argv, "--min_genebody_length", help = "Minimum gene body length (bp)", default = 800, type = "integer")
 argv <- add_argument(argv, "--pseudocount",     help = "Pseudocount added to both densities", default = 1e-3, type = "double")
 argv <- add_argument(argv, "--output",          help = "Output PI table (tsv)")
 argv <- parse_args(argv)
@@ -76,7 +76,7 @@ main <- function(argv) {
     promoter <- read.delim(argv$promoter_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
     genebody <- read.delim(argv$genebody_count, header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
 
-    out <- compute_pausing_index(promoter, genebody, min_len = as.integer(argv$min_gene_length), eps = argv$pseudocount)
+    out <- compute_pausing_index(promoter, genebody, min_len = as.integer(argv$min_genebody_length), eps = argv$pseudocount)
 
     write.table(out, file = argv$output, sep = "\t", quote = FALSE, row.names = FALSE)
     message("[pausing_index] ", nrow(out), " genes x ", ncol(out), " cols -> ", argv$output)

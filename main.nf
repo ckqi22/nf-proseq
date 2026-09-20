@@ -107,30 +107,42 @@ workflow {
     align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
 
     // ========================================================================
-    // Spike-in（条件分支）：params.spike_genome 配置时，统计每样本 spike reads，
-    // 把 spike_count 并入 meta 供 GENOMECOV 缩放 bigWig，并生成因子表供 profile 表缩放；
-    // 未配置时照旧（库大小 CPM），spike_factors_ch 给空串。
+    // Spike-in（条件分支）：spike_enabled 时统计 spike reads，spike_count 并入 meta 供缩放；
+    // 未配置时按库大小 CPM。total_mapped（read1 mapped）恒并入 meta，供算 scale_cpm。
     // ========================================================================
     spike_enabled = params.spike_genome?.trim() || params.spike_fasta?.trim() || params.spike_index?.trim()
 
+    // 计数文件 → 整数通道（total_mapped 恒有；spike_count 仅开 spike 时有）
+    def to_int = { m, f -> [m, f.text.trim().toInteger()] }
+
+    total_mapped_ch = align_bowtie2.out.total_mapped.map(to_int)
+
     if (spike_enabled) {
-        spike = spikein(align_bowtie2.out.bam_bai, prepare_genome.out.spike_chroms)
-        // spike_count 并入 meta（新 map，不改共享 meta，避免污染 quantification 消费的 meta）
-        bam_for_pol2 = align_bowtie2.out.bam
-            .join(spike.counts.map { m, f -> [m, f.text.trim().toInteger()] }, by: [0])
-            .map { meta, bam, c -> [meta + [spike_count: c], bam] }
-        spike_factors_ch = spike.factors.map { it.toRealPath().toString() }
+        spike = spikein(align_bowtie2.out.bam_bai, prepare_genome.out.spike_chroms, align_bowtie2.out.total_mapped)
+        spike_count_ch = spike.counts.map(to_int)
+        spike_factors_ch = spike.factors                          // path(spikein_scale_factors.tsv)
         spike_factors_out = spike.factors
     } else {
-        bam_for_pol2 = align_bowtie2.out.bam
-        spike_factors_ch = channel.value('')
+        spike_count_ch = channel.empty()
+        spike_factors_ch = channel.value([])                      // 空 list → NORMALIZE 判空（不加 --spike_factors）
         spike_factors_out = channel.empty()
     }
+
+    // 两个 join 都在「原始 meta」上做（join by:[0] 比较整个 meta，先写 total_mapped 会失配）。
+    // spike 关时 spike_count_ch 空，remainder:true 左外连 → sc=null，不并入 spike_count。
+    bam_for_pol2 = align_bowtie2.out.r1_bam
+        .join(total_mapped_ch, by: [0])
+        .join(spike_count_ch, by: [0], remainder: true)
+        .map { meta, r1_bam, tm, sc ->
+            def extra = [total_mapped: tm]
+            if (sc != null) extra.spike_count = sc
+            [meta + extra, r1_bam]
+        }
 
     // ========================================================================
     // Step 3: quantification (per-sample featureCounts -> merged gene body matrix)
     // ========================================================================
-    quantification(align_bowtie2.out.bam, prepare_genome.out.genebody_union_saf)
+    quantification(align_bowtie2.out.r1_bam, prepare_genome.out.genebody_union_saf)
     
     // ========================================================================
     // Step 4: Differential expression (DESeq2 on gene body counts)
@@ -168,21 +180,25 @@ workflow {
 
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
     methods = params.normalize_methods ?: 'cpm,fpkm'
-    profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody', spike_factors_ch)
+    profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody', spike_factors_ch,
+                     align_bowtie2.out.total_mapped.map { _m, f -> f }.collect())
     // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
     // Step 7: TSS Metagene profiles（deepTools：每样本 profile + heatmap；
     //   组图按 samplesheet 的 group 列，仅 ≥2 样本的显式分组；'unknown'/单样本组不出组图）
     // ========================================================================
-    // signal_mode：single=单碱基5'端(默认) / full=full read 全长覆盖度（metagene 用 CPM 版）
+    // signal_mode：single=单碱基5'端(默认) / full=full read 全长覆盖度 / both=两者都算(对比用)
     signal_mode = (params.signal_mode?.trim() ?: 'single')
 
+    // 下游 metagene/metagene_group 的分析 bigWig：归一化优先 spike（开 spike 用 _spike，否则 _cpm），
+    // signal_type 取 full/single（both 落单碱基）。spike_enabled 是 main 作用域布尔（上方已算，非 channel）。
     // 同一 channel 直接喂两个子流程（DSL2 多消费者，无需 into 分叉）
-    metagene_bw = (signal_mode == 'full') ? pol2_count.out.bigwig_coverage_cpm
-                                          : pol2_count.out.bigwig_cpm
+    metagene_bw = (signal_mode == 'full')
+        ? (spike_enabled ? pol2_count.out.bigwig_full_spike : pol2_count.out.bigwig_full_cpm)
+        : (spike_enabled ? pol2_count.out.bigwig_spike      : pol2_count.out.bigwig_cpm)
     metagene(metagene_bw, prepare_genome.out.tss_bed)
-    metagene_group(metagene_bw, prepare_genome.out.tss_bed)
+    metagene_group(metagene_bw, prepare_genome.out.tss_bed, prepare_genome.out.chrom_sizes)
 
     // 报告用混合通道：publish 块原先在此处 mix 会独占两个源通道，
     // 上移到这里定义一次，publish 直接引用、报告侧再 mix（各通道保持单一算子消费者）
@@ -194,8 +210,46 @@ workflow {
     // ========================================================================
     pause_analysis(pol2_count.out.promoter_matrix, pol2_count.out.genebody_matrix, groups_config_ch)
 
+
     // ========================================================================
-    // Step 9: 报告打包（params.report 独立开关；与 compared_groups 无关，
+    // Step 9: 逐碱基 Pol II 活性位点信号表（活跃基因 pause 窗口，raw + 归一化双轨）
+    //   manifest 6 列：group \t sample \t plus_raw \t minus_raw \t plus_norm \t minus_norm（bigWig basename）
+    //   归一化轨：开 spike 用 spike 版，否则 CPM（与 metagene_bw 同口径）；raw 轨恒为单碱基原始计数。
+    //   需单碱基 5' 端信号（signal_mode=single/both）；full 模式无单碱基 bigWig，跳过。
+    // ========================================================================
+    if (signal_mode != 'full') {
+        norm_bigwig   = spike_enabled ? pol2_count.out.bigwig_spike : pol2_count.out.bigwig_cpm
+        raw_norm_bigwig = pol2_count.out.bigwig.join(norm_bigwig, by: [0])
+
+        manifest = raw_norm_bigwig
+            .map { meta, plus_raw, minus_raw, plus_norm, minus_norm -> [meta.group, meta.sample, plus_raw.name, minus_raw.name, plus_norm.name, minus_norm.name].join('\t') }
+            .collect()
+            .map { lines -> lines.join('\n') }
+
+        raw_norm_bws = raw_norm_bigwig
+            .map { _meta, plus_raw, minus_raw, plus_norm, minus_norm -> [plus_raw, minus_raw, plus_norm, minus_norm] }
+            .flatten()
+            .collect()
+
+        SIGNAL_TABLE(
+            manifest,
+            raw_norm_bws,
+            prepare_genome.out.promoter_bed.map { _name, f -> f },
+            pol2_count.out.promoter_matrix,
+            pol2_count.out.genebody_matrix,
+            prepare_genome.out.representative_gtf,
+            annotation_ch
+        )
+        signal_table_ch = SIGNAL_TABLE.out.signal_table
+        signal_table_note_ch = SIGNAL_TABLE.out.note
+    } else {
+        signal_table_ch = channel.empty()      // full 模式无单碱基 bigWig，跳过
+        signal_table_note_ch = channel.empty()
+    }
+
+
+    // ========================================================================
+    // Step 10: 报告打包（params.report 独立开关；与 compared_groups 无关，
     //         无差异分析也打包，diff/enrich/plot 相关章节由 Report.R [skip]）
     // ========================================================================
     if (params.report) {
@@ -210,6 +264,8 @@ workflow {
             de_plot_ch,
             tss_metagene_plot_all.mix(tss_metagene_matrix_all),
             metagene_group.out.plot,
+            signal_table_ch,
+            signal_table_note_ch,
             pause_analysis.out.pi_all,
             prepare_genome.out.promoter_bed.map { _name, file -> file },
             prepare_genome.out.genebody_bed.map { _name, file -> file },
@@ -223,28 +279,7 @@ workflow {
         report_ch = channel.empty()
     }
 
-    // ========================================================================
-    // Step 10（暂不接入）: 逐碱基 Pol II 活性位点信号表（按组聚合 + RPM + gene/transcript 注释）
-    // ========================================================================
-    // bg_files    = pol2_count.out.bedGraph
-    //                 .map { _meta, plus, minus -> [plus, minus] }
-    //                 .collect()
-    // bg_manifest = pol2_count.out.bedGraph
-    //                 .map { meta, plus, minus -> "${meta.sample}\t${plus.name}\t${minus.name}" }
-    //                 .collect()
-    //                 .map { lines -> lines.join('\n') }
 
-    // groups_yml_ch = groups_config_ch.map { groups ->
-    //     def lines = []
-    //     groups.each { name, samples ->
-    //         lines << "${name}:"
-    //         samples.each { s -> lines << "  - ${s}" }
-    //     }
-    //     lines.join('\n')
-    // }
-
-    // SIGNAL_TABLE(bg_files, bg_manifest, groups_yml_ch,
-    //              prepare_genome.out.gene_bed, config_ch.map { it.gtf }, annotation_ch)
 
     // ========================================================================
     // Publish results to output directories
@@ -256,21 +291,24 @@ workflow {
     genebody_bed        = prepare_genome.out.genebody_bed.map { _name, file -> file }
     genebody_union_saf  = prepare_genome.out.genebody_union_saf.map { _name, file -> file }
     gene_bed            = prepare_genome.out.gene_bed
+    tss_bed             = prepare_genome.out.tss_bed
+    chrom_sizes         = prepare_genome.out.chrom_sizes
+    spike_chroms        = prepare_genome.out.spike_chroms
 
-    fastqc_raw_zip      = preprocess.out.fastqc_raw_zip
-    fastqc_raw_html     = preprocess.out.fastqc_raw_html
-    fastqc_trimmed_zip  = preprocess.out.fastqc_trimmed_zip
-    fastqc_trimmed_html = preprocess.out.fastqc_trimmed_html
-    fastp_json          = preprocess.out.fastp_json
+    fastqc_raw_zip      = preprocess.out.fastqc_raw_zip.map { _meta, file -> file }
+    fastqc_raw_html     = preprocess.out.fastqc_raw_html.map { _meta, file -> file }
+    fastqc_trimmed_zip  = preprocess.out.fastqc_trimmed_zip.map { _meta, file -> file }
+    fastqc_trimmed_html = preprocess.out.fastqc_trimmed_html.map { _meta, file -> file }
+    fastp_json          = preprocess.out.fastp_json.map { _meta, file -> file }
     fastp_html          = preprocess.out.fastp_html
     fastp_log           = preprocess.out.fastp_log
-    trimmed_reads       = preprocess.out.trimmed_reads
+    trimmed_reads       = preprocess.out.trimmed_reads.map { _meta, file -> file }
     base_quality_plot   = preprocess.out.base_quality_plot
     statistics          = preprocess.out.statistics
 
-    bam                 = align_bowtie2.out.bam
-    bai                 = align_bowtie2.out.bai
-    alignRate           = align_bowtie2.out.alignRate
+    bam                 = align_bowtie2.out.bam.map { _meta, file -> file }
+    bai                 = align_bowtie2.out.bai.map { _meta, file -> file }
+    alignRate           = align_bowtie2.out.alignRate.map { _meta, file -> file }
 
     promoter_pol2_counts    = pol2_count.out.promoter_counts.map { _meta, file -> file }
     genebody_pol2_counts    = pol2_count.out.genebody_counts.map { _meta, file -> file }
@@ -286,26 +324,27 @@ workflow {
 
     enrich_result       = enrich_result_ch
 
-    coverage_bw         = pol2_count.out.bigwig
-    coverage_bw_cpm     = pol2_count.out.bigwig_cpm
-    coverage_full_bw    = pol2_count.out.bigwig_coverage_cpm
-    // pol2_signal_table   = SIGNAL_TABLE.out.signal_table
-
-    genebody_profile    = profile_genebody.out.annotated
+    coverage_bw             = pol2_count.out.bigwig.map { _meta, plus, minus -> [plus, minus] }
+    coverage_bw_cpm         = pol2_count.out.bigwig_cpm.map { _meta, plus, minus -> [plus, minus] }
+    coverage_bw_spike       = pol2_count.out.bigwig_spike.map { _meta, plus, minus -> [plus, minus] }
+    coverage_full_bw        = pol2_count.out.bigwig_full.map { _meta, plus, minus -> [plus, minus] }
+    coverage_full_bw_cpm    = pol2_count.out.bigwig_full_cpm.map { _meta, plus, minus -> [plus, minus] }
+    coverage_full_bw_spike  = pol2_count.out.bigwig_full_spike.map { _meta, plus, minus -> [plus, minus] }
+    pol2_signal_table       = signal_table_ch
+    genebody_profile        = profile_genebody.out.annotated
     // promoter_profile    = profile_promoter.out.annotated
 
-    spike_factors       = spike_factors_out
+    spike_factors               = spike_factors_out
+    metagene_plot               = tss_metagene_plot_all
+    metagene_matrix             = tss_metagene_matrix_all
+    group_bw                    = metagene_group.out.avg_bigwig
+    metagene_combined_plot      = metagene.out.combined_plot.mix(metagene_group.out.combined_plot)
+    metagene_combined_matrix    = metagene.out.combined_matrix.mix(metagene_group.out.combined_matrix)
 
-    tss_metagene_plot   = tss_metagene_plot_all
-    tss_metagene_matrix = tss_metagene_matrix_all
-    group_avg_bigwig    = metagene_group.out.avg_bigwig
-    metagene_combined_plot   = metagene.out.combined_plot.mix(metagene_group.out.combined_plot)
-    metagene_combined_matrix = metagene.out.combined_matrix.mix(metagene_group.out.combined_matrix)
+    pi_all      = pause_analysis.out.pi_all
+    pi_boxplot  = pause_analysis.out.pi_boxplot
 
-    pi_all              = pause_analysis.out.pi_all
-    pi_boxplot          = pause_analysis.out.pi_boxplot
-    report              = report_ch
-
+    report      = report_ch
 }
 
 // ------------------------------------------------------------------
@@ -318,6 +357,9 @@ output {
     genebody_bed        { path "01.Info/" }
     genebody_union_saf  { path "01.Info/" }
     gene_bed            { path "01.Info/" }
+    tss_bed             { path "01.Info/" }
+    chrom_sizes         { path "01.Info/" }
+    spike_chroms        { path "01.Info/" }
 
     fastqc_raw_zip      { path "02.Fastqc/" }
     fastqc_raw_html     { path "02.Fastqc/" }
@@ -342,29 +384,32 @@ output {
     genebody_pol2_matrix    { path "05.Quantification/" }
     genebody_matrix         { path "05.Quantification/" }
     genebody_profile        { path "05.Quantification/" }
-    // promoter_profile        { path "05.Quantification/" }
     spike_factors           { path "05.Quantification/" }
+    // promoter_profile        { path "05.Quantification/" }
 
-    diff_result         { path "06.Differential_Expression/" }
-    checkde_result      { path "06.Differential_Expression/" }
-    de_plot             { path "06.Differential_Expression/" }
-    pca_plot            { path "06.Differential_Expression/" }
+    diff_result     { path "06.Differential_Expression/" }
+    checkde_result  { path "06.Differential_Expression/" }
+    de_plot         { path "06.Differential_Expression/" }
+    pca_plot        { path "06.Differential_Expression/" }
 
-    enrich_result       { path "07.enrich/" }
+    enrich_result   { path "07.enrich/" }
 
-    coverage_bw         { path "08.Pol2_coverage/" }
-    coverage_bw_cpm     { path "08.Pol2_coverage/" }
-    coverage_full_bw    { path "08.Pol2_coverage/" }
-    // pol2_signal_table   { path "08.Pol2_coverage/" }
+    coverage_bw             { path "08.Pol2_coverage/" }
+    coverage_bw_cpm         { path "08.Pol2_coverage/" }
+    coverage_bw_spike       { path "08.Pol2_coverage/" }
+    coverage_full_bw        { path "08.Pol2_coverage/" }
+    coverage_full_bw_cpm    { path "08.Pol2_coverage/" }
+    coverage_full_bw_spike  { path "08.Pol2_coverage/" }
+    group_bw                { path "08.Pol2_coverage/" }
+    pol2_signal_table       { path "08.Pol2_coverage/" }
 
-    tss_metagene_plot   {path "09.TSS_Metagene/"}
-    tss_metagene_matrix {path "09.TSS_Metagene/"}
-    group_avg_bigwig    { path "09.TSS_Metagene/" }
-    metagene_combined_plot   { path "09.TSS_Metagene/" }
-    metagene_combined_matrix { path "09.TSS_Metagene/" }
+    metagene_plot               { path "09.TSS_Metagene/" }
+    metagene_matrix             { path "09.TSS_Metagene/" }
+    metagene_combined_plot      { path "09.TSS_Metagene/" }
+    metagene_combined_matrix    { path "09.TSS_Metagene/" }
 
-    pi_all              { path "10.Pausing_Index/" }
-    pi_boxplot          { path "10.Pausing_Index/" }
+    pi_all      { path "10.Pausing_Index/" }
+    pi_boxplot  { path "10.Pausing_Index/" }
 
-    report              { path "11.Report/" }
+    report  { path "11.Report/" }
 }

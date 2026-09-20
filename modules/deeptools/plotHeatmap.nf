@@ -7,9 +7,9 @@ process PLOTHEATMAP {
     tuple val(meta), path(matrix)
 
     output:
-    tuple val(meta), path("${meta.sample}_metagene_heatmap.{pdf,tiff}"), emit: plot
-    tuple val(meta), path("${meta.sample}_metagene_heatmap_matrix.gz"), emit: matrix
-    tuple val(meta), path("${meta.sample}_metagene_heatmap_sorted_regions.bed"), emit: sorted_regions
+    tuple val(meta), path("${meta.sample}_metagene_heatmap_${meta.sig}.{pdf,tiff}"), emit: plot
+    tuple val(meta), path("${meta.sample}_metagene_heatmap_${meta.sig}_matrix.gz"), emit: matrix
+    tuple val(meta), path("${meta.sample}_metagene_heatmap_${meta.sig}_sorted_regions.bed"), emit: sorted_regions
 
     script:
     // 逐基因 TSS 热图（每行一个基因），按窗口均值升序，即弱信号在顶部。
@@ -25,13 +25,13 @@ process PLOTHEATMAP {
         --dpi 300 \\
         --heatmapHeight 20 \\
         --xAxisLabel "Distance from TSS (bp)" \\
-        --outFileName ${meta.sample}_metagene_heatmap.pdf \\
-        --outFileNameMatrix ${meta.sample}_metagene_heatmap_matrix.gz \\
-        --outFileSortedRegions ${meta.sample}_metagene_heatmap_sorted_regions.bed
+        --outFileName ${meta.sample}_metagene_heatmap_${meta.sig}.pdf \\
+        --outFileNameMatrix ${meta.sample}_metagene_heatmap_${meta.sig}_matrix.gz \\
+        --outFileSortedRegions ${meta.sample}_metagene_heatmap_${meta.sig}_sorted_regions.bed
 
     convert \\
         -density 300 -quality 100 \\
-        ${meta.sample}_metagene_heatmap.pdf \\
-        ${meta.sample}_metagene_heatmap.tiff
+        ${meta.sample}_metagene_heatmap_${meta.sig}.pdf \\
+        ${meta.sample}_metagene_heatmap_${meta.sig}.tiff
     """
 }

@@ -11,16 +11,16 @@
 //
 
 // DSL2 同一 process 不能在单个 workflow 中调用两次 → 用别名各调一次
-include { COMPUTEMATRIX as COMPUTEMATRIX_PROFILE } from '../modules/deeptools/computeMatrix'
-include { COMPUTEMATRIX as COMPUTEMATRIX_HEATMAP } from '../modules/deeptools/computeMatrix'
+include { COMPUTEMATRIX as COMPUTEMATRIX_PROFILE  } from '../modules/deeptools/computeMatrix'
+include { COMPUTEMATRIX as COMPUTEMATRIX_HEATMAP  } from '../modules/deeptools/computeMatrix'
 include { COMPUTEMATRIX as COMPUTEMATRIX_COMBINED } from '../modules/deeptools/computeMatrix'
-include { PLOTPROFILE }   from '../modules/deeptools/plotProfile'
-include { PLOTPROFILE as PLOTPROFILE_COMBINED }     from '../modules/deeptools/plotProfile'
-include { PLOTHEATMAP }   from '../modules/deeptools/plotHeatmap'
+include { PLOTPROFILE                             } from '../modules/deeptools/plotProfile'
+include { PLOTPROFILE as PLOTPROFILE_COMBINED     } from '../modules/deeptools/plotProfile'
+include { PLOTHEATMAP                             } from '../modules/deeptools/plotHeatmap'
 
 workflow metagene {
     take:
-    bigwig_cpm   // channel: tuple(meta, plus_bw, minus_bw) — 5'-端 CPM bigWigs
+    bigwig_cpm   // channel: tuple(meta, plus_bw, minus_bw) — 分析 bigWig 对（_single/_full × _cpm/_spike）
     tss_bed      // channel: path(tss.bed)（BED6，第 6 列 strand）
 
     main:
@@ -30,11 +30,18 @@ workflow metagene {
     def hd = params.metagene.heatmap_downstream ?: 150    // heatmap 下游
     def bs = params.metagene.bin_size           ?: 10     // bin 大小（bp）
 
+    // 从输入 bigwig 文件名派生信号描述符 sig（无链向）：S1_single_plus_cpm → single_cpm、
+    //   S1_full_plus_spike → full_spike。写入 meta 供 computeMatrix/plot 输出命名 + y 轴标签。
+    ch_bw = bigwig_cpm.map { meta, p, m ->
+        def sig = p.baseName.substring(meta.sample.size() + 1).replace('_plus', '')
+        [meta + [sig: sig], p, m]
+    }
+
     // ---- profile 矩阵（上游 pu / 下游 pd）----
-    profile_matrix = COMPUTEMATRIX_PROFILE(bigwig_cpm, tss_bed, pu, pd, bs, 'profile')
+    profile_matrix = COMPUTEMATRIX_PROFILE(ch_bw, tss_bed, pu, pd, bs, 'profile')
 
     // ---- heatmap 矩阵（上游 hu / 下游 hd）----
-    heatmap_matrix = COMPUTEMATRIX_HEATMAP(bigwig_cpm, tss_bed, hu, hd, bs, 'heatmap')
+    heatmap_matrix = COMPUTEMATRIX_HEATMAP(ch_bw, tss_bed, hu, hd, bs, 'heatmap')
 
     // COMPUTEMATRIX 只有一个 emit → 调用结果即输出通道本身（单输出进程无 .out）
     PLOTPROFILE(profile_matrix)
@@ -42,20 +49,23 @@ workflow metagene {
 
     // ---- 叠加图：所有样本一张 profile（多样本矩阵 → 一图多线）----
     // 收集全部样本 bigWig → 单个 List 传给 COMPUTEMATRIX（meta 写入 sample_names + plot_type:'lines'）
-    combine_all_samples = bigwig_cpm
-        .map { meta, p, m -> [meta.sample, p, m] }
+    combine_all_samples = ch_bw
+        .map { meta, p, m -> [meta.sample, meta.sig, p, m] }
         .toList()
+        .filter { l -> l.size() > 0 }     // 空输入跳过（与 metagene_group 一致），避免 computeMatrix -S 空
         .map { list ->
-            [[sample: 'all_samples', plot_type: 'lines', per_group: true, sample_names: list.collect { x -> x[0] }],
-             list.collect { x -> x[1] }, list.collect { x -> x[2] }]
+            def sorted = list.sort { it[0] }   // 按样本名稳定排序 → 列表顺序确定 → -resume 可缓存
+            def sig = sorted ? sorted[0][1] : ''
+            [[sample: 'all_samples', plot_type: 'lines', per_group: true, sig: sig, sample_names: sorted.collect { x -> x[0] }],
+             sorted.collect { x -> x[2] }, sorted.collect { x -> x[3] }]
         }
     cm_combined = COMPUTEMATRIX_COMBINED(combine_all_samples, tss_bed, pu, pd, bs, 'profile')
     PLOTPROFILE_COMBINED(cm_combined)
 
     emit:
     // 裸 path（无 meta 包装），与 R 版 metagene.nf 的 emit 契约一致 → main.nf
-    // 输出块（09.TSS_Metagene/）直接消费。merged 原始矩阵（2 条
-    // *_TSS_merged_matrix.gz）与 heatmap sorted_regions.bed 并入 matrix 一并交付。
+    // 输出块（09.TSS_Metagene/）直接消费。rbind 原始矩阵（2 条
+    // *_TSS_${sig}_matrix.gz）与 heatmap sorted_regions.bed 并入 matrix 一并交付。
     plot   = PLOTPROFILE.out.profile.mix(PLOTHEATMAP.out.plot)
                   .map { _meta, f -> f }
     matrix = PLOTPROFILE.out.matrix

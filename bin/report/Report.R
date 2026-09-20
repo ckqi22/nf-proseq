@@ -1,14 +1,6 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# report.R — 
-#
-# Inputs:
-#   --
-#   --
-#   --
-#
-# Output:
-#   
+# report.R
 # =============================================================================
 suppressPackageStartupMessages({
   library(argparse)
@@ -28,6 +20,7 @@ parser$add_argument('--enrich_dir', help = 'GO/KEGG/GSEA enrichment results dire
 parser$add_argument('--metagene_dir', help = 'metagene results directory')
 parser$add_argument('--pausing_dir', help = 'pausing index results directory')
 parser$add_argument('--pol2_signal', help = 'pol2_signal_table.tsv (Pol II active site)')
+parser$add_argument('--pol2_signal_xlsx', help = 'PROSeq_pol2_signal.xlsx (Pol II active site, with note)')
 parser$add_argument('--plot_dir', help = 'scatter/volcano/heatmap figure directory')
 parser$add_argument('--statistics', help = 'read statistics file (deprecated; xlsx now from --xlsx_dir)')
 parser$add_argument('--xlsx_dir', help = 'txt2xlsx output directory (TXT2XLSX 模块产物)')
@@ -56,6 +49,7 @@ metagene_dir    <- normalize_optional(args$metagene_dir)
 pausing_dir     <- normalize_optional(args$pausing_dir)
 plot_dir        <- normalize_optional(args$plot_dir)
 pol2_signal     <- normalize_optional(args$pol2_signal)
+pol2_signal_xlsx <- normalize_optional(args$pol2_signal_xlsx)
 statistics      <- normalize_optional(args$statistics)
 xlsx_dir        <- normalize_optional(args$xlsx_dir)
 resolved_config <- normalize_optional(args$resolved_config)
@@ -287,23 +281,21 @@ if (!is.null(pausing_dir) && dir.exists(pausing_dir)) {
 
 # 12. Meta_TSS（仅 *metagene_profile.pdf + *.tiff；.tiff 由 PLOTPROFILE 管线内转出）
 if (!is.null(metagene_dir) && dir.exists(metagene_dir)) {
-  safe_cp(file.path(metagene_dir, '*_metagene_profile.pdf'),  file.path(output_dir, '12.Meta_TSS'))
-  safe_cp(file.path(metagene_dir, '*_metagene_profile.tiff'), file.path(output_dir, '12.Meta_TSS'))
+  safe_cp(file.path(metagene_dir, '*_metagene_profile_*.pdf'),  file.path(output_dir, '12.Meta_TSS'))
+  safe_cp(file.path(metagene_dir, '*_metagene_profile_*.tiff'), file.path(output_dir, '12.Meta_TSS'))
 } else {
   cat('[skip] 未指定 --metagene_dir 或目录不存在\n')
 }
 
-# 14. Pol_II_active_site（14.1.PROSeq_profiling 占位 + 14.2.Heatmap 组级热图）
-if (!is.null(pol2_signal) && file.exists(pol2_signal)) {
-  safe_cp(pol2_signal, file.path(output_dir, '14.Pol_II_active_site', '14.1.PROSeq_profiling'))
+# 14. Pol_II_active_site（14.1.PROSeq_profiling 仅交付 xlsx + 14.2.Heatmap 组级热图）
+if (!is.null(pol2_signal_xlsx) && file.exists(pol2_signal_xlsx)) {
+  safe_cp(pol2_signal_xlsx, file.path(output_dir, '14.Pol_II_active_site', '14.1.PROSeq_profiling'))
 } else {
-  cat('[skip] pol2_signal 缺失（14.1 留空占位）\n')
+  cat('[skip] pol2_signal_xlsx 缺失（14.1 留空占位）\n')
 }
-safe_cp(file.path(resources_dir, 'report', 'PolII活性位点说明.txt'),
-        file.path(output_dir, '14.Pol_II_active_site', '14.1.PROSeq_profiling'))
 if (!is.null(group_heatmaps) && dir.exists(group_heatmaps)) {
-  safe_cp(file.path(group_heatmaps, '*_metagene_heatmap.pdf'),  file.path(output_dir, '14.Pol_II_active_site', '14.2.Heatmap'))
-  safe_cp(file.path(group_heatmaps, '*_metagene_heatmap.tiff'), file.path(output_dir, '14.Pol_II_active_site', '14.2.Heatmap'))
+  safe_cp(file.path(group_heatmaps, '*_metagene_heatmap_*.pdf'),  file.path(output_dir, '14.Pol_II_active_site', '14.2.Heatmap'))
+  safe_cp(file.path(group_heatmaps, '*_metagene_heatmap_*.tiff'), file.path(output_dir, '14.Pol_II_active_site', '14.2.Heatmap'))
 } else {
   cat('[skip] 未指定 --group_heatmaps 或目录不存在\n')
 }

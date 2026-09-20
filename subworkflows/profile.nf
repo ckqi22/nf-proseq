@@ -15,10 +15,11 @@ workflow profile {
     annotation    // channel: val(string) — gene_annotation 路径（同 diff 的 annotation_ch）
     methods       // channel: val ("cpm,fpkm")
     name          // channel: val ("genebody" | "promoter" | "pol2")
-    spike_factors // channel: val(string) — spikein_scale_factors.tsv 绝对路径，'' 表示无 spike
+    spike_factors // channel: path(spikein_scale_factors.tsv) — 空 list 表示无 spike
+    total_mapped  // channel: path list — collected *.total_mapped.txt（read1 mapped count）
 
     main:
-    NORMALIZE(matrix, methods, name, spike_factors)
+    NORMALIZE(matrix, methods, name, spike_factors, total_mapped)
     ANNOTATE(matrix, NORMALIZE.out.normalized, annotation, name)
 
     emit:

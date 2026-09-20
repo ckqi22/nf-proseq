@@ -10,7 +10,9 @@
 #
 #   CPM  / RPM  = count / library_size * 1e6
 #   FPKM / RPKM = count * 1e9 / (length * library_size)
-#   --spike_factors 给定时，library_size 换成每样本 spike_count（spike-in 缩放）。
+#   library_size（回退链）：total_mapped > colSums（.Cpm/.Fpkm/.Rpkm 分母恒用 read1 mapped 总数）。
+#     --total_mapped 给定时换成每样本 read1 mapped 总数；--spike_factors 给定时额外追加 .Spike 列
+#     （= count × factor，factor=1e6/spike_count），不碰 lib_size。
 # =============================================================================
 suppressWarnings(suppressMessages({
     library(argparser)
@@ -20,7 +22,8 @@ suppressWarnings(suppressMessages({
 argv <- arg_parser("Normalize a count matrix (CPM/FPKM/RPKM, multi-method)")
 argv <- add_argument(argv, "--input",   help = "Count matrix (gene_id, length, samples)")
 argv <- add_argument(argv, "--methods", help = "Comma-separated: cpm | fpkm | rpkm", default = "cpm,fpkm")
-argv <- add_argument(argv, "--spike_factors", help = "Optional spikein_scale_factors.tsv (sample spike_count factor size_factor); use spike_count as denominator instead of colSums")
+argv <- add_argument(argv, "--total_mapped", help = "Comma-separated *.total_mapped.txt (sample -> read1 mapped count); use as denominator instead of colSums")
+argv <- add_argument(argv, "--spike_factors", help = "Optional spikein_scale_factors.tsv (sample spike_count factor size_factor); append .Spike column = count x factor (1e6/spike_count), independent of lib_size")
 argv <- add_argument(argv, "--output",  help = "Output normalized matrix (tsv)")
 argv <- parse_args(argv)
 
@@ -52,23 +55,16 @@ main <- function(argv) {
     storage.mode(mat) <- "double"
     len <- as.numeric(dt$length)
 
-    # 归一化分母：默认库大小（colSums）；给了 --spike_factors 时，用每样本 spike_count 替换
-    # （spike 缩放 = count/spike_count*1e6，跨样本可比）。spike_count 缺失或 <=0 的样本退回库大小。
+    # 归一化分母：total_mapped > colSums（.Cpm/.Fpkm/.Rpkm 恒用 read1 mapped 总数，末级回退 colSums）。
+    #   spike 归一化独立成 .Spike 列（见下），不覆盖 lib_size。
     lib_size <- colSums(mat, na.rm = TRUE)
-    if (!is.null(argv$spike_factors) && !is.na(argv$spike_factors) && nzchar(argv$spike_factors)) {
-        if (!file.exists(argv$spike_factors))
-            stop("[normalize] --spike_factors not found: ", argv$spike_factors)
-        sf <- read.delim(argv$spike_factors, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-        spk <- setNames(as.numeric(sf$spike_count), sf$sample)
-        for (s in sample_cols) {
-            if (s %in% names(spk) && !is.na(spk[[s]]) && spk[[s]] > 0) {
-                lib_size[[s]] <- spk[[s]]
-            } else {
-                message("[normalize] WARNING: no valid spike_count for ", s,
-                        " — fallback to library size")
-            }
-        }
-        message("[normalize] using spike-in counts as normalization denominator")
+    if (!is.null(argv$total_mapped) && !is.na(argv$total_mapped) && nzchar(argv$total_mapped)) {
+        files <- trimws(unlist(strsplit(argv$total_mapped, ",", fixed = TRUE)))
+        files <- files[nzchar(files)]
+        tm <- setNames(numeric(length(files)), sub("\\.total_mapped\\.txt$", "", basename(files)))
+        for (i in seq_along(files)) tm[i] <- as.numeric(readLines(files[i], warn = FALSE)[1])
+        for (s in sample_cols)
+            if (s %in% names(tm) && !is.na(tm[[s]]) && tm[[s]] > 0) lib_size[[s]] <- tm[[s]]
     }
     if (any(lib_size == 0))
         stop("[normalize] zero library size for sample(s): ",
@@ -84,6 +80,22 @@ main <- function(argv) {
         v <- norm_fun[[m]](mat, len, lib_size)
         colnames(v) <- paste0(sample_cols, ".", suffix[[m]])
         res <- cbind(res, v)
+    }
+
+    # spike 列：count × factor（factor = 1e6/spike_count，来自 spikein_scale.R），独立追加，不碰 lib_size。
+    if (!is.null(argv$spike_factors) && !is.na(argv$spike_factors) && nzchar(argv$spike_factors)) {
+        if (!file.exists(argv$spike_factors))
+            stop("[normalize] --spike_factors not found: ", argv$spike_factors)
+        sf <- read.delim(argv$spike_factors, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+        fac <- setNames(as.numeric(sf$factor), sf$sample)
+        for (s in sample_cols) {
+            if (s %in% names(fac) && !is.na(fac[[s]]) && is.finite(fac[[s]])) {
+                res[[paste0(s, ".Spike")]] <- mat[, s] * fac[[s]]
+            } else {
+                message("[normalize] WARNING: no valid spike factor for ", s, " — .Spike omitted")
+            }
+        }
+        message("[normalize] appended .Spike columns (count x spike factor)")
     }
 
     write.table(res, file = argv$output, sep = "\t", quote = FALSE, row.names = FALSE)

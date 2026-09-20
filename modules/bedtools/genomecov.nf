@@ -1,76 +1,50 @@
 process GENOMECOV {
-    tag "${meta.sample}"
+    tag "${meta.sample}_${signal}"
 
     input:
     tuple val(meta), path(bam)
+    val signal   // 'single'（5' 端单碱基）| 'full'（全长覆盖度）——文件名前缀直接取该值
 
     output:
-    tuple val(meta), path("${meta.sample}_plus.bedgraph"), path("${meta.sample}_minus.bedgraph"), emit: bedgraph
-    tuple val(meta), path("${meta.sample}_plus.bigWig"), path("${meta.sample}_minus.bigWig"), emit: bigwig
-    tuple val(meta), path("${meta.sample}_plus_cpm.bedgraph"), path("${meta.sample}_minus_cpm.bedgraph"), emit: bedgraph_cpm
-    tuple val(meta), path("${meta.sample}_plus_cpm.bigWig"), path("${meta.sample}_minus_cpm.bigWig"), emit: bigwig_cpm
-    tuple val(meta), path("${meta.sample}_forward_cpm.bigWig"), path("${meta.sample}_reverse_cpm.bigWig"), emit: bigwig_coverage_cpm
-    tuple val(meta), path("${meta.sample}_forward.bigWig"), path("${meta.sample}_reverse.bigWig"), emit: bigwig_full
+    tuple val(meta), path("${meta.sample}_${signal}_plus.bedgraph"),      path("${meta.sample}_${signal}_minus.bedgraph"),      emit: bedgraph
+    tuple val(meta), path("${meta.sample}_${signal}_plus.bigWig"),        path("${meta.sample}_${signal}_minus.bigWig"),        emit: bigwig
+    tuple val(meta), path("${meta.sample}_${signal}_plus_cpm.bedgraph"),  path("${meta.sample}_${signal}_minus_cpm.bedgraph"),  emit: bedgraph_cpm
+    tuple val(meta), path("${meta.sample}_${signal}_plus_cpm.bigWig"),    path("${meta.sample}_${signal}_minus_cpm.bigWig"),    emit: bigwig_cpm
+    tuple val(meta), path("${meta.sample}_${signal}_plus_spike.bigWig"),  path("${meta.sample}_${signal}_minus_spike.bigWig"),  emit: bigwig_spike, optional: true
 
     script:
-    // =========================================================================
-    // 链向与端向（gene-strand 约定）
-    // -------------------------------------------------------------------------
-    // PRO-seq 建库 reverse：+ 基因信号落在反向比对 read 的 5'、- 基因信号落在正向比对 read 的 5'。
-    // gene-strand 命名（按基因链）：
-    //   _plus  = + 链基因信号（reverse，-strand -） => 正值
-    //   _minus = - 链基因信号（forward，-strand +） => 取负（-scale -1）
-    // 两轨一正一负，加载进 IGV 即 gene-strand signed 视图（同官方 TrackTx/Mahat）。
-    // 计数时按基因链取对应轨（singlebase_count），负值轨取负回正。
-    // PE 时只保留 read1（flag 0x40=64，R2 是 5' 接头侧无信号）；SE 直接使用 BAM。
-    // The input bedGraph file must be sorted
-    def sig_bam = meta.single_end ? "${bam}" : "r1.bam"
-    def extract = meta.single_end ? "" : "samtools view -f 64 -F 4 -b ${bam} -o r1.bam"
-    // spike-in：meta.spike_count（每样本比对到 spike 染色体的 read 数）存在且 >0 时，
-    // 用 1e6/spike_count 做缩放（跨样本可比）；否则退回库大小 1e6/total。
-    def spk = meta.spike_count
-
+    // 由 signal 派生：single → -5（5' 端）；full → 全长覆盖度。文件名前缀 _single/_full 直接取 signal。
+    // 进程只算一种信号，门控在调用侧（pol2_count 按 mode 决定调 GENOMECOV 还是 GENOMECOV_FULL 别名）。
+    def five = signal == 'single' ? '-5' : ''
     """
-    samtools view -H ${bam} | awk '/^@SQ/ {sub(/SN:/, "", \$2); sub(/LN:/, "", \$3); print \$2, \$3}' | sort -k1,1 > chrom.sizes
+    # =========================================================================
+    # 链向与端向(gene-strand 约定)
+    #   PRO-seq reverse 建库：+ 基因信号 = 反向比对 read 的 5'; - 基因信号 = 正向比对 read 的 5'.
+    #   _plus  = + 链基因信号(-strand -, 正值); _minus = - 链基因信号(-strand +, -scale -1 取负).
+    #   signal=single → -5 只取 5' 端(_single 前缀); signal=full → 全长覆盖度(_full 前缀).
+    # spike-in: combined BAM 含 spike_* 染色体; 下游只关心主基因组, chrom.sizes 与各
+    #   bedGraph 一律剔除 spike_* 染色体，使 bigWig/bedGraph 为纯主基因组。
+    # =========================================================================
+    samtools view -H ${bam} | awk '/^@SQ/ {sub(/SN:/, "", \$2); sub(/LN:/, "", \$3); print \$2, \$3}' | awk '\$1 !~ /^spike_/' | sort -k1,1 > chrom.sizes
 
-    ${extract}
+    bedtools genomecov -ibam ${bam} ${five} -strand - -bg           | awk '\$1 !~ /^spike_/' | sort -k1,1 -k2,2n > ${meta.sample}_${signal}_plus.bedgraph
+    bedtools genomecov -ibam ${bam} ${five} -strand + -bg -scale -1 | awk '\$1 !~ /^spike_/' | sort -k1,1 -k2,2n > ${meta.sample}_${signal}_minus.bedgraph
 
-    if [ -n "${spk}" ] && [ "${spk}" -gt 0 ]; then
-        total=${spk}
-    else
-        total=\$(samtools view -c ${sig_bam})
-    fi
-    if [ "\${total}" -le 0 ]; then
-        echo "ERROR: zero/negative total (library size or spike_count) for ${meta.sample}" >&2
-        exit 1
-    fi
-    scale=\$(awk -v t="\$total" 'BEGIN{printf "%.12g", 1000000.0/t}')
+    awk -v s="${meta.scale_cpm}" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_${signal}_plus.bedgraph  > ${meta.sample}_${signal}_plus_cpm.bedgraph
+    awk -v s="${meta.scale_cpm}" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_${signal}_minus.bedgraph > ${meta.sample}_${signal}_minus_cpm.bedgraph
 
-    bedtools genomecov -ibam ${sig_bam} -5 -strand - -bg           | sort -k1,1 -k2,2n > ${meta.sample}_plus.bedgraph
-    bedtools genomecov -ibam ${sig_bam} -5 -strand + -bg -scale -1 | sort -k1,1 -k2,2n > ${meta.sample}_minus.bedgraph
+    bedGraphToBigWig ${meta.sample}_${signal}_plus.bedgraph       chrom.sizes ${meta.sample}_${signal}_plus.bigWig
+    bedGraphToBigWig ${meta.sample}_${signal}_minus.bedgraph      chrom.sizes ${meta.sample}_${signal}_minus.bigWig
+    bedGraphToBigWig ${meta.sample}_${signal}_plus_cpm.bedgraph   chrom.sizes ${meta.sample}_${signal}_plus_cpm.bigWig
+    bedGraphToBigWig ${meta.sample}_${signal}_minus_cpm.bedgraph  chrom.sizes ${meta.sample}_${signal}_minus_cpm.bigWig
 
-    awk -v s="\$scale" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_plus.bedgraph  > ${meta.sample}_plus_cpm.bedgraph
-    awk -v s="\$scale" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_minus.bedgraph > ${meta.sample}_minus_cpm.bedgraph
-
-    bedGraphToBigWig ${meta.sample}_plus.bedgraph       chrom.sizes ${meta.sample}_plus.bigWig
-    bedGraphToBigWig ${meta.sample}_minus.bedgraph      chrom.sizes ${meta.sample}_minus.bigWig
-    bedGraphToBigWig ${meta.sample}_plus_cpm.bedgraph   chrom.sizes ${meta.sample}_plus_cpm.bigWig
-    bedGraphToBigWig ${meta.sample}_minus_cpm.bedgraph  chrom.sizes ${meta.sample}_minus_cpm.bigWig
-
-    # read全长覆盖度
-    # forward = 正链基因信号(reverse read, 正值); reverse = 负链基因信号(forward read, 负值)
-    bedtools genomecov -ibam ${sig_bam} -strand - -bg           | sort -k1,1 -k2,2n > ${meta.sample}_forward.bedgraph
-    bedtools genomecov -ibam ${sig_bam} -strand + -bg -scale -1 | sort -k1,1 -k2,2n > ${meta.sample}_reverse.bedgraph
-
-    awk -v s="\$scale" 'BEGIN{OFS="\t"}{\$4=\$4*s; print}' ${meta.sample}_forward.bedgraph > ${meta.sample}_forward_cpm.bedgraph
-    awk -v s="\$scale" 'BEGIN{OFS="\t"}{\$4=\$4*s; print}' ${meta.sample}_reverse.bedgraph > ${meta.sample}_reverse_cpm.bedgraph
-
-    bedGraphToBigWig ${meta.sample}_forward_cpm.bedgraph chrom.sizes ${meta.sample}_forward_cpm.bigWig
-    bedGraphToBigWig ${meta.sample}_reverse_cpm.bedgraph chrom.sizes ${meta.sample}_reverse_cpm.bigWig
-
-    # raw full-read bigWig（无 scale），供 full 模式 PI 计数（singlebase_count 用 bigWigAverageOverBed 求和）
-    bedGraphToBigWig ${meta.sample}_forward.bedgraph chrom.sizes ${meta.sample}_forward.bigWig
-    bedGraphToBigWig ${meta.sample}_reverse.bedgraph chrom.sizes ${meta.sample}_reverse.bigWig
+    # spike 版：同一 raw bedgraph 换 scale(1e6/spike_count); 开 spike 才有(scale_spike != null)
+    ${meta.scale_spike != null ? """
+    awk -v s="${meta.scale_spike}" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_${signal}_plus.bedgraph  > ${meta.sample}_${signal}_plus_spike.bedgraph
+    awk -v s="${meta.scale_spike}" 'BEGIN{OFS="\\t"}{\$4=\$4*s; print}' ${meta.sample}_${signal}_minus.bedgraph > ${meta.sample}_${signal}_minus_spike.bedgraph
+    bedGraphToBigWig ${meta.sample}_${signal}_plus_spike.bedgraph  chrom.sizes ${meta.sample}_${signal}_plus_spike.bigWig
+    bedGraphToBigWig ${meta.sample}_${signal}_minus_spike.bedgraph chrom.sizes ${meta.sample}_${signal}_minus_spike.bigWig
+    """ : ''}
     """
 }
 
@@ -84,4 +58,4 @@ process GENOMECOV {
 //  --outFileFormat bedgraph \
 // 	--numberOfProcessors 10 \
 //  --skipNAs
-// 与bedtools genomecov -ibam ${sig_bam} -5 -strand - -bg一致
+// 与 bedtools genomecov -ibam ${bam} -5 -strand - -bg 一致（bamCoverage --filterRNAstrand forward = FLAG16 反向比对 = -strand -，实测正确）

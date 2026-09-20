@@ -7,22 +7,22 @@
 // featureCounts runs once per sample — the -p flag is decided per sample, so
 // single-end and paired-end samples coexist correctly in one run.
 //
+// read1 单端化已上移到 align_bowtie2（EXTRACT_R1 每样本只抽一次），
+// 此处直接吃现成的 r1_bam，不再自行抽 read1。
+//
 
-include { EXTRACT_R1         } from '../modules/samtools/extract_r1.nf'
 include { FEATURECOUNTS      } from '../modules/featurecounts.nf'
 include { FEATURECOUNTS_MERGE } from '../modules/featurecounts_merge.nf'
 
 workflow quantification {
     take:
-    bam_ch             // channel: tuple val(meta), path(bam) — one BAM per sample
+    r1_bam             // channel: tuple val(meta), path(r1.bam) — read1 单端化 BAM（align_bowtie2 产出）
     genebody_union_saf // channel: tuple val(name), path(genebody_union.saf) — 区域名随文件走
 
     main:
-    // PRO-seq 定量只取 read1（R2 是 5' 接头侧、无 Pol II 信号）：抽 R1-only
-    // 单端 BAM 后再喂 featureCounts，避免 -p 把 R2 也计入。
-    r1_ch = EXTRACT_R1(bam_ch)
-
-    FEATURECOUNTS(r1_ch, genebody_union_saf)
+    // PRO-seq 定量只取 read1（R2 是 5' 接头侧、无 Pol II 信号）：R1 已在 align_bowtie2
+    // 抽好并剥 paired flag，直接喂 featureCounts，避免 -p 把 R2 也计入。
+    FEATURECOUNTS(r1_bam, genebody_union_saf)
 
     // Collect per-sample count files -> merge into one matrix。
     FEATURECOUNTS_MERGE(FEATURECOUNTS.out.counts.collect(), 'genebody')

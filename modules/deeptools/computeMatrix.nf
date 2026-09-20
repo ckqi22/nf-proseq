@@ -13,7 +13,7 @@ process COMPUTEMATRIX {
     val   label           // 'profile' | 'heatmap'：区分两条矩阵链，避免输出名相撞
 
     output:
-    tuple val(meta), path("${meta.sample}_${label}_TSS_merged_matrix.gz"), emit: matrix
+    tuple val(meta), path("${meta.sample}_${label}_TSS_${meta.sig}_matrix.gz"), emit: matrix
 
     script:
     // 正/负链基因分开算（各用对应链的 bigWig），再 rbind 合并为单 group 矩阵。
@@ -54,7 +54,7 @@ process COMPUTEMATRIX {
 
     computeMatrixOperations rbind \\
         -m ${meta.sample}_plus_${label}_TSS_matrix.gz ${meta.sample}_minus_${label}_TSS_matrix.gz \\
-        -o ${meta.sample}_${label}_TSS_merged_matrix.gz
+        -o ${meta.sample}_${label}_TSS_${meta.sig}_matrix.gz
     """
 }
 

@@ -7,6 +7,8 @@ process REPORT {
     val  plot_files          // List<Path>：heatmap/scatter/volcano（无差异分析时 = 空 List）
     val  base_quality_files  // List<Path>：*.tiff/*.pdf（过滤前/后碱基质量图，必非空）
     val  group_heatmap_files // List<Path>：组级 metagene heatmap（无分组时 = 空 List）
+    val  pol2_signal         // 字符串：pol2_signal_table.tsv 绝对路径（full 模式 = ''）
+    val  pol2_signal_xlsx    // 字符串：PROSeq_pol2_signal.xlsx 绝对路径（full 模式 = ''）
     path xlsx_dir            // report_xlsx/（TXT2XLSX 产物目录）
     path fastqc_images       // fastqc_images/（含 raw/ trimmed/）
     path config_yml          // params.yml
@@ -44,6 +46,8 @@ process REPORT {
       --enrich_dir stage/enrich \\
       --metagene_dir stage/metagene \\
       --pausing_dir stage/pausing \\
+      --pol2_signal '${pol2_signal}' \\
+      --pol2_signal_xlsx '${pol2_signal_xlsx}' \\
       --plot_dir stage/plot \\
       --group_heatmaps stage/group_heatmaps \\
       --resolved_config ${resolved_config} \\

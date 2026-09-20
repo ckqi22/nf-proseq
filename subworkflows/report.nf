@@ -11,11 +11,12 @@
 // REPORT 收空 List 建空 stage 目录，Report.R 对应章节只 [skip] 不失败。
 //
 
-include { OVERALL_STAT  } from '../modules/report/overall_stat.nf'
-include { FASTQC_IMAGES } from '../modules/report/fastqc_images.nf'
-include { TXT2XLSX      } from '../modules/report/txt2xlsx.nf'
-include { PAUSING_XLSX  } from '../modules/report/pausing_xlsx.nf'
-include { REPORT        } from '../modules/report/report.nf'
+include { OVERALL_STAT     } from '../modules/report/overall_stat.nf'
+include { FASTQC_IMAGES    } from '../modules/report/fastqc_images.nf'
+include { TXT2XLSX         } from '../modules/report/txt2xlsx.nf'
+include { PAUSING_XLSX     } from '../modules/report/pausing_xlsx.nf'
+include { POL2_SIGNAL_XLSX } from '../modules/report/pol2_signal_xlsx.nf'
+include { REPORT           } from '../modules/report/report.nf'
 
 workflow report {
     take:
@@ -29,6 +30,8 @@ workflow report {
     de_plot_files        // path glob：heatmap/scatter/volcano（0..n）
     metagene_files       // path：metagene plot + matrix（n 条，必非空）
     group_heatmaps       // path：组级 metagene heatmap（metagene_group.out.plot；可空）
+    pol2_signal          // path：pol2_signal_table.tsv（signal_table 产物；full 模式为空通道）
+    pol2_signal_note     // path：pol2_signal_table.note.txt（signal_table 产物；full 模式为空通道）
     pi_table             // path：Pausing_Index.tsv（单条）
     promoter_bed         // path：promoter.bed（单条，代表 transcript TSS 窗口）
     genebody_bed         // path：genebody.bed（单条，代表 transcript gene body）
@@ -50,6 +53,12 @@ workflow report {
     diff_dir_path = diff_dir.map { d -> d.toString() }.ifEmpty('')
     TXT2XLSX(read_statistics, OVERALL_STAT.out.overall_statistics, diff_dir_path)
 
+    // signal_table 在 full 模式为空通道 → 传空串（Report.R 侧 normalize_optional 置 NULL，14.1 留空占位）
+    pol2_signal_path = pol2_signal.map { f -> f.toString() }.ifEmpty('')
+
+    // signal_table note → txt2xlsx 转 PROSeq_pol2_signal.xlsx（full 模式空通道 → 进程跳过、xlsx 空）
+    POL2_SIGNAL_XLSX(pol2_signal, pol2_signal_note)
+
     PAUSING_XLSX(pi_table, promoter_bed, genebody_bed, annotation)
 
     REPORT(
@@ -59,6 +68,8 @@ workflow report {
         de_plot_files.collect().ifEmpty([]),
         base_quality_plot.collect(),
         group_heatmaps.collect().ifEmpty([]),
+        pol2_signal_path,
+        POL2_SIGNAL_XLSX.out.xlsx.map { f -> f.toString() }.ifEmpty(''),
         TXT2XLSX.out.xlsx_dir,
         FASTQC_IMAGES.out.images,
         config_yml,
