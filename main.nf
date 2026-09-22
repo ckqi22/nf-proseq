@@ -21,6 +21,7 @@ include { parse_config                } from './modules/parse_config.nf'
 include { prepare_genome              } from './subworkflows/prepare_genome.nf'
 include { preprocess                  } from './subworkflows/preprocess.nf'
 include { align_bowtie2               } from './subworkflows/align_bowtie2.nf'
+include { REMOVE_RRNA                 } from './modules/bowtie2/remove_rrna.nf'
 include { spikein                     } from './subworkflows/spikein.nf'
 include { quantification              } from './subworkflows/quantification.nf'
 include { diff                        } from './subworkflows/diff.nf'
@@ -102,20 +103,47 @@ workflow {
     preprocess(read_ch, params.adapter ?: 'I')
 
     // ========================================================================
-    // Step 2: alignment
+    // Step 1b: 去 rRNA（opt-in，比对前）
+    //   bowtie2 比对 rRNA_index，只按 R1 判定，保留 R1 未比对 rRNA 的 reads；
+    //   remove_rrna=false 或物种段未配 rRNA_index 时直接用 trimmed reads。
     // ========================================================================
-    align_bowtie2(preprocess.out.trimmed_reads, prepare_genome.out.index, prepare_genome.out.fasta)
+    rrna_index_ch = config_ch.map { it -> it.rRNA_index ?: '' }
+                             .filter { s -> s.trim() }
+                             .map { idx -> [[id: 'rrna'], file(idx).parent] }
+
+    if (params.remove_rrna) {
+        rrna_removed    = REMOVE_RRNA(preprocess.out.trimmed_reads, rrna_index_ch)
+        reads_for_align = rrna_removed.clean_reads
+        rrna_rate_ch    = rrna_removed.rrna_rate
+    } else {
+        reads_for_align = preprocess.out.trimmed_reads
+        rrna_rate_ch    = channel.empty()
+    }
 
     // ========================================================================
-    // Spike-in（条件分支）：spike_enabled 时统计 spike reads，spike_count 并入 meta 供缩放；
-    // 未配置时按库大小 CPM。total_mapped（read1 mapped）恒并入 meta，供算 scale_cpm。
+    // Step 2: alignment
     // ========================================================================
     spike_enabled = params.spike_genome?.trim() || params.spike_fasta?.trim() || params.spike_index?.trim()
 
-    // 计数文件 → 整数通道（total_mapped 恒有；spike_count 仅开 spike 时有）
+    // spike_chroms 名单透传给 EXTRACT_R1：开 spike 时按名单剔 spike 染色体出纯主 r1_bam；
+    // 关 spike 时空串占位（EXTRACT_R1 不剔，SE 走 cp 快路径）。
+    spike_chroms_for_align = spike_enabled
+        ? prepare_genome.out.spike_chroms.map { it -> it.toString() }
+        : channel.value('')
+
+    align_bowtie2(reads_for_align, prepare_genome.out.index, prepare_genome.out.fasta, spike_chroms_for_align)
+
+    // ========================================================================
+    // Spike-in（条件分支）：spike_enabled 时统计 spike reads，spike_count 并入 meta 供缩放；
+    // 未配置时按库大小 CPM。total_mapped（read1 mapped，含 spike）恒并入 meta，供 spike 占比质控；
+    // main_mapped（read1 mapped，纯主，EXTRACT_R1 剔 spike 后）供算 scale_cpm。
+    // ========================================================================
+
+    // 计数文件 → 整数通道（total_mapped / main_mapped 恒有；spike_count 仅开 spike 时有）
     def to_int = { m, f -> [m, f.text.trim().toInteger()] }
 
     total_mapped_ch = align_bowtie2.out.total_mapped.map(to_int)
+    main_mapped_ch  = align_bowtie2.out.main_mapped.map(to_int)
 
     if (spike_enabled) {
         spike = spikein(align_bowtie2.out.bam_bai, prepare_genome.out.spike_chroms, align_bowtie2.out.total_mapped)
@@ -128,13 +156,15 @@ workflow {
         spike_factors_out = channel.empty()
     }
 
-    // 两个 join 都在「原始 meta」上做（join by:[0] 比较整个 meta，先写 total_mapped 会失配）。
+    // join 都在「原始 meta」上做（join by:[0] 比较整个 meta，先写任何额外 key 会失配）。
     // spike 关时 spike_count_ch 空，remainder:true 左外连 → sc=null，不并入 spike_count。
+    // main_mapped 由 EXTRACT_R1 直接产出（纯主，已剔 spike），不再 tm - sc 反推。
     bam_for_pol2 = align_bowtie2.out.r1_bam
         .join(total_mapped_ch, by: [0])
         .join(spike_count_ch, by: [0], remainder: true)
-        .map { meta, r1_bam, tm, sc ->
-            def extra = [total_mapped: tm]
+        .join(main_mapped_ch, by: [0])
+        .map { meta, r1_bam, tm, sc, mm ->
+            def extra = [total_mapped: tm, main_mapped: mm]
             if (sc != null) extra.spike_count = sc
             [meta + extra, r1_bam]
         }
@@ -149,7 +179,7 @@ workflow {
     // ========================================================================
     annotation_ch = config_ch.map { it -> it.gene_annotation ?: '' }
 
-    if (params.compared_groups) {
+    if (params.diff?.compared_groups) {
         diff(quantification.out.genebody_matrix, groups_config_ch, annotation_ch)
         diff_result_ch    = diff.out.result
         checkde_result_ch = diff.out.checkde_result
@@ -165,7 +195,7 @@ workflow {
     // ========================================================================
     // Step 5: Enrichment analysis
     // ========================================================================
-    if (params.compared_groups) {
+    if (params.diff?.compared_groups) {
         enrich(diff.out.passed)
         enrich_result_ch = enrich.out.gokegg_result.mix(enrich.out.gsea_result)
     } else {
@@ -181,19 +211,20 @@ workflow {
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
     methods = params.normalize_methods ?: 'cpm,fpkm'
     profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody', spike_factors_ch,
-                     align_bowtie2.out.total_mapped.map { _m, f -> f }.collect())
+                     align_bowtie2.out.main_mapped.map { _m, f -> f }.collect())
     // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
     // Step 7: TSS Metagene profiles（deepTools：每样本 profile + heatmap；
     //   组图按 samplesheet 的 group 列，仅 ≥2 样本的显式分组；'unknown'/单样本组不出组图）
     // ========================================================================
-    // signal_mode：single=单碱基5'端(默认) / full=full read 全长覆盖度 / both=两者都算(对比用)
+    // signal_mode：single=单碱基活性位点端(reverse 库=R1 5'端 / forward 库=R1 3'端，见 params.strandedness)
+    //              full=full read 全长覆盖度
+    //              both=两者都算(对比用)
     signal_mode = (params.signal_mode?.trim() ?: 'single')
 
     // 下游 metagene/metagene_group 的分析 bigWig：归一化优先 spike（开 spike 用 _spike，否则 _cpm），
     // signal_type 取 full/single（both 落单碱基）。spike_enabled 是 main 作用域布尔（上方已算，非 channel）。
-    // 同一 channel 直接喂两个子流程（DSL2 多消费者，无需 into 分叉）
     metagene_bw = (signal_mode == 'full')
         ? (spike_enabled ? pol2_count.out.bigwig_full_spike : pol2_count.out.bigwig_full_cpm)
         : (spike_enabled ? pol2_count.out.bigwig_spike      : pol2_count.out.bigwig_cpm)
@@ -215,7 +246,8 @@ workflow {
     // Step 9: 逐碱基 Pol II 活性位点信号表（活跃基因 pause 窗口，raw + 归一化双轨）
     //   manifest 6 列：group \t sample \t plus_raw \t minus_raw \t plus_norm \t minus_norm（bigWig basename）
     //   归一化轨：开 spike 用 spike 版，否则 CPM（与 metagene_bw 同口径）；raw 轨恒为单碱基原始计数。
-    //   需单碱基 5' 端信号（signal_mode=single/both）；full 模式无单碱基 bigWig，跳过。
+    //   需单碱基活性位点端信号（signal_mode=single/both；末端由 params.strandedness 决定：reverse→5'端 / forward→3'端）；
+    //   full 模式无单碱基 bigWig，跳过。
     // ========================================================================
     if (signal_mode != 'full') {
         norm_bigwig   = spike_enabled ? pol2_count.out.bigwig_spike : pol2_count.out.bigwig_cpm
@@ -238,7 +270,8 @@ workflow {
             pol2_count.out.promoter_matrix,
             pol2_count.out.genebody_matrix,
             prepare_genome.out.representative_gtf,
-            annotation_ch
+            annotation_ch,
+            params.strandedness?.trim() ?: 'reverse'
         )
         signal_table_ch = SIGNAL_TABLE.out.signal_table
         signal_table_note_ch = SIGNAL_TABLE.out.note
@@ -308,7 +341,9 @@ workflow {
 
     bam                 = align_bowtie2.out.bam.map { _meta, file -> file }
     bai                 = align_bowtie2.out.bai.map { _meta, file -> file }
+    unmapped_bam        = align_bowtie2.out.unmapped_bam.map { _meta, file -> file }
     alignRate           = align_bowtie2.out.alignRate.map { _meta, file -> file }
+    rrna_rate           = rrna_rate_ch.map { _meta, file -> file }
 
     promoter_pol2_counts    = pol2_count.out.promoter_counts.map { _meta, file -> file }
     genebody_pol2_counts    = pol2_count.out.genebody_counts.map { _meta, file -> file }
@@ -375,7 +410,9 @@ output {
 
     bam                 { path "04.Alignment/" }
     bai                 { path "04.Alignment/" }
+    unmapped_bam        { path "04.Alignment/" }
     alignRate           { path "04.Alignment/" }
+    rrna_rate           { path "04.Alignment/" }
 
     promoter_pol2_counts    { path "05.Quantification/" }
     genebody_pol2_counts    { path "05.Quantification/" }

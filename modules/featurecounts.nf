@@ -16,17 +16,15 @@ process FEATURECOUNTS {
     def type_args = is_gtf ? "-t gene" : ""
     def attr_args = is_gtf ? "-g gene_id" : "-g GeneID" 
 
-    // PRO-seq 标准库 read1 反义(antisense) → 计数取反链(-s 2)。
-    // strandedness 已从 params.yml 移除、待议定；暂默认 reverse，议定后用
-    // params.strandedness 覆盖（'forward'→-s 1, 'reverse'→-s 2, 'unstranded'→-s 0）。
-    def strandedness = 0
-    def lib_strand = params.strandedness ?: 'reverse'
-    if (lib_strand == 'forward') {
-        strandedness = 1
-    } else if (lib_strand == 'reverse') {
-        strandedness = 2
+    // 链向由 params.strandedness 决定（与 genomecov 信号轨同一约定）：
+    //   reverse（默认，标准 PRO-seq，R1 antisense）→ -s 2（反链计数）
+    //   forward（R1 sense）→ -s 1（正链计数）
+    // 不支持 unstranded（PRO-seq 信号必须有链向），非法值报错。
+    def strand = params.strandedness?.trim() ?: 'reverse'
+    if (strand != 'forward' && strand != 'reverse') {
+        error "params.strandedness must be 'reverse' or 'forward', got: ${strand}" 
     }
-
+    def strandedness = (strand == 'forward') ? 1 : 2
     """
     ${params.feature_counts} \\
         -T 2 \\

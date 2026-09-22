@@ -25,11 +25,13 @@ spike_min_fraction: 0.0  # spike-in reads 占比下限（spike_count / total_map
 
 # ---- 分析参数 ----
 adapter: I                     # [I, UMI, HT, SP 择其一]
-adapter_sequence: "TGGAATTCTCGGGTGCCAAGG"   # Illumina TruSeq small RNA 3' 接头 (RA3)，仅 adapter=I 时生效
+adapter_sequence:              # 仅 adapter=I 时生效
 sample_sheet: "samplesheet.csv"
 umi_length: 7                  # UMI 长度（仅 adapter=UMI 时生效）
 normalize_methods: "cpm,fpkm"  # profile 表归一化方法（cpm/fpkm，逗号分隔，默认两者都做）
 signal_mode: single            # 后续分析(metagene/PI)信号类型：single=单碱基5'端(默认) / full=full read 全长覆盖度 / both=两者都算(对比用)
+strandedness: reverse          # R1 相对新生 RNA 的方向：reverse=R1 反向互补(antisense，标准 PRO-seq，默认) / forward=R1 同向(sense)
+remove_rrna: false             # 比对前去 rRNA(opt-in)：bowtie2 比对 rRNA_index，只按 R1 判定；要求物种段配 rRNA_index
 
 # ---- 报告 ----
 report: true                  # 开关：false 完全跳过报告步骤
@@ -38,7 +40,7 @@ report: true                  # 开关：false 完全跳过报告步骤
 threshold:
   data_amount: 9.3G            # 双端数据量阈值
   data_percentage: 0.8         # 容许偏差比例
-  duplicate_rate: 0.6          # 重复率阈值
+  duplicate_rate: 0.99          # 重复率阈值
   mapping_rate: 0.2            # 比对率阈值
   de_number: 300               # 差异基因数量阈值
 
@@ -67,9 +69,6 @@ metagene:
 
 # ---- 差异分析 ----
 diff:
-  fc_cutoff: 1.5               # 默认 Fold Change 阈值
-  pval_cutoff: 0.05            # 默认 P-value 阈值
-
-# ---- 比较组（A vs B, FC, P, paired/unpaired）----
-compared_groups:
-  - treatment, control, 1.5, 0.05, paired
+  tool: deseq2                 # 差异分析方法：deseq2(默认) / edger
+  compared_groups:             # 比较组(treatment vs control, FC, P, paired/unpaired);不同比较可各设阈值
+    - treatment, control, 1.5, 0.05, paired

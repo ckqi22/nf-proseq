@@ -1,12 +1,13 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: pol2_count
-// Pol II 活性位点覆盖（bedtools genomecov，gene-strand 约定）：
-//   GENOMECOV 从 r1_bam（read1 单端化 BAM）生成 bedGraph + bigWig，按 signal_mode 门控：
-//     mode=single → 只跑单碱基 5' 端（_single）；mode=full → 只跑全长覆盖度（_full）；
-//     mode=both → 两个 alias 都跑（开发者对比 full-read vs 单碱基）。
+// Pol II 活性位点覆盖(bedtools genomecov，gene-strand 约定)：
+//   GENOMECOV 从 r1_bam(read1 单端化 BAM)生成 bedGraph + bigWig，按 signal_mode 门控：
+//     mode=single → 只跑单碱基活性位点端(_single；末端由 params.strandedness 决定：reverse→5'端 / forward→3'端)；
+//     mode=full → 只跑全长覆盖度(_full)；
+//     mode=both → 两个 alias 都跑(开发者对比 full-read vs 单碱基)。
 //   复用同一份 GENOMECOV bedGraph：
-//     - 逐碱基信号（bedGraph + bigWig）→ 交付 / tss_meta
+//     - 逐碱基信号(bedGraph + bigWig) → 交付 / tss_meta
 //     - promoter.bed / genebody.bed 单碱基区域计数 → PI
 //
 
@@ -31,9 +32,9 @@ workflow pol2_count {
     // 归一化 scale（对齐 normalize.R）：cpm 恒 = 1e6/total_mapped；spike = 1e6/spike_count（仅 spike 开时）。
     //   cpm/spike 均无 length 项（length 留给未来 fpkm/rpkm 扩展，当前不触发）。
     r1_bam_scaled = r1_bam.map { meta, bam ->
-        def tm = meta.total_mapped ?: 0
-        if (tm <= 0) { error "total_mapped <= 0 for ${meta.sample}" }
-        def scale_cpm   = String.format('%.12g', 1e6d / tm)
+        def mm = meta.main_mapped ?: 0
+        if (mm <= 0) { error "main_mapped <= 0 for ${meta.sample}" }
+        def scale_cpm   = String.format('%.12g', 1e6d / mm)
         def scale_spike = (meta.spike_count != null && meta.spike_count > 0)
             ? String.format('%.12g', 1e6d / meta.spike_count)
             : null

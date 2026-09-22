@@ -37,19 +37,16 @@ main <- function(argv) {
                      col.names = c("sample", "spike_count"))
     dir.create(argv$output_dir, showWarnings = FALSE, recursive = TRUE)
 
-    # geomean over positive counts（忽略 NA / <=0）
-    pos <- ct$spike_count[!is.na(ct$spike_count) & ct$spike_count > 0]
-    if (length(pos) == 0)
-        stop("[spikein_scale] no positive spike counts")
-    geomean <- exp(mean(log(pos)))
+    # spike_count ≤ 0 或 NA：直接报错（不写 Inf/NA 继续；上游 spikein.nf 已按 fraction 拦截，此处兜底）
+    bad <- is.na(ct$spike_count) | ct$spike_count <= 0
+    if (any(bad))
+        stop("[spikein_scale] spike_count <= 0 or NA for sample(s): ",
+             paste(ct$sample[bad], collapse = ", "))
+
+    geomean <- exp(mean(log(ct$spike_count)))
 
     ct$factor      <- 1e6 / ct$spike_count
     ct$size_factor <- geomean / ct$spike_count
-
-    bad <- ct$sample[is.na(ct$spike_count) | ct$spike_count <= 0]
-    if (length(bad) > 0)
-        message("[spikein_scale] WARNING: spike_count <= 0 for sample(s) ",
-                paste(bad, collapse = ", "), " -> factor = NA/Inf")
 
     out_factors <- file.path(argv$output_dir, "spikein_scale_factors.tsv")
     write.table(ct, out_factors, sep = "\t", row.names = FALSE, quote = FALSE)

@@ -78,6 +78,7 @@ build         <- get_field(config, 'build')
 instrument    <- get_field(config, 'instrument_model')
 sample_type   <- get_field(config, 'sample_type')
 sample_number <- get_field(config, 'sample_number')
+strandedness  <- get_field(config, 'strandedness', 'reverse')
 gtf_file      <- get_field(config, 'gtf')
 species_title <- gsub(' ', '_', tools::toTitleCase(tolower(species)))
 current_date  <- paste(unlist(strsplit(as.character(Sys.Date()), '-')), collapse = '')
@@ -194,20 +195,21 @@ sample_information <- function(samplesheet, config, build, output_dir) {
     c('Sample type', sample_type),
     c('Sample number', sample_number),
     c('Instrument model', instrument),
-    c('Genome build', build)
+    c('Genome build', build),
+    c('Library orientation (R1 vs nascent RNA)', strandedness)
   )
   for (i in seq_along(info_rows)) {
     writeData(wb, 'Sheet1', info_rows[[i]][1], startRow = 1 + i, startCol = 1)
     writeData(wb, 'Sheet1', info_rows[[i]][2], startRow = 1 + i, startCol = 2)
   }
 
-  data_row <- 7
+  data_row <- 8
   writeData(wb, 'Sheet1', sample_df, startRow = data_row, startCol = 1, rowNames = FALSE)
 
   addStyle(wb, 'Sheet1', title_style, rows = 1, cols = 1)
   addStyle(wb, 'Sheet1', common_style, rows = 2:(data_row - 1), cols = 1)
   addStyle(wb, 'Sheet1', common_style, rows = data_row, cols = 1:4)
-  addStyle(wb, 'Sheet1', centre_style, rows = data_row:(data_row + nrow(sample_df)),
+  addStyle(wb, 'Sheet1', centre_style, rows = (data_row + 1):(data_row + nrow(sample_df)),
            cols = 1:4, gridExpand = TRUE)
 
   saveWorkbook(wb, file.path(output_dir, 'Project_Info.xlsx'), overwrite = TRUE)

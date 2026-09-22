@@ -118,6 +118,14 @@ if (is.null(gene_name)) {
 prom_col <- paste0("Promoter Reads(-", upstream, ",", downstream, ")")
 gb_col   <- paste0("GeneBody Reads(", genebody_offset, ",TES)")
 
+# 表头颜色（沿用 txt2xlsx.R 的 palette）：坐标/注释列浅蓝，三类数值各一色
+head_fill <- function(name) {
+    if (name == "Pausing Index")              "#A9D08E"  # 绿
+    else if (grepl("^Promoter Reads", name))  "#FFFF00"  # 黄
+    else if (grepl("^GeneBody Reads", name))  "#F4B183"  # 橙
+    else                                      "#ADD8E6"  # 浅蓝（GeneID/chr/start/end/strand/Length/Annotation）
+}
+
 # ── 逐样本写 sheet ──
 wb <- createWorkbook()
 for (s in samples) {
@@ -140,9 +148,14 @@ for (s in samples) {
     sname <- substr(gsub("[\\[\\]:*?/\\\\]", "_", s), 1, 31)
     addWorksheet(wb, sname)
     writeData(wb, sname, df, rowNames = FALSE)
-    # 加粗表头 + 冻结首行
-    addStyle(wb, sname, createStyle(textDecoration = "bold", halign = "center"),
-             rows = 1, cols = 1:ncol(df))
+    # 彩色表头（沿用 txt2xlsx.R 风格）+ 冻结首行
+    for (j in seq_len(ncol(df))) {
+        addStyle(wb, sname,
+                 createStyle(fontName = "Times New Roman", textDecoration = "bold",
+                             fgFill = head_fill(colnames(df)[j]),
+                             halign = "center", valign = "center"),
+                 rows = 1, cols = j)
+    }
     freezePane(wb, sname, firstActiveRow = 2)
     message("[pausing_xlsx] sheet '", sname, "': ", nrow(df), " genes")
 }

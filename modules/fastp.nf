@@ -16,12 +16,12 @@ process FASTP {
     if (adapter_type == "UMI" || adapter_type == "HT" || adapter_type == "SP") {
         args = "-U --umi_loc=per_read --umi_len=${params.umi_length} --umi_prefix=UMI --trim_poly_x"
     } else if (adapter_type == "I") {
-        // PRO-seq 标准 3' 接头 (Illumina TruSeq small RNA RA3)。显式指定，避免
-        // fastp 自动检测漏掉短 overlap 的接头；--trim_poly_g 去除 NovaSeq 2-color
-        // 化学产生的 poly-G 尾巴，--trim_poly_x 去掉末端单碱基 poly 尾巴。
-        // 三者配合可在 --end-to-end 下把比对率从 ~68% 拉回 ~84%（不牺牲 5' 坐标）。
-        def adapter_seq = params.adapter_sequence ?: 'TGGAATTCTCGGGTGCCAAGG'
-        args = "--adapter_sequence ${adapter_seq} --trim_poly_g --trim_poly_x"
+        // PRO-seq 标准 3' 接头 (Illumina TruSeq small RNA RA3)。
+        // --trim_poly_g 去除NovaSeq 2-color 化学产生的 poly-G 尾巴
+        // --trim_poly_x 去掉末端单碱基 poly 尾巴；
+        // 接头序列仅在 params.adapter_sequence 提供时才显式传 --adapter_sequence
+        def adapter_args = params.adapter_sequence ? "--adapter_sequence ${params.adapter_sequence}" : ""
+        args = ("${adapter_args} --trim_poly_g --trim_poly_x").trim()
     }
     if (meta.single_end) {
         reads_args          = "--in1 ${reads}"

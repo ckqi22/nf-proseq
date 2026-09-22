@@ -11,6 +11,7 @@ process SIGNAL_TABLE {
     path genebody_count   // pol2_genebody.matrix.txt
     path rep_gtf          // 代表转录本 GTF（longest_tx.gtf）→ transcriptid 列
     path annotation       // gene 注释表（首列 gene_id，其余列透传）
+    val orientation       // 'reverse' | 'forward' 
 
     output:
     path "pol2_signal_table.tsv", emit: signal_table
@@ -40,6 +41,7 @@ process SIGNAL_TABLE {
         --peak_frac ${peak_frac} \\
         --noise_quantile ${noise_quantile} \\
         --min_reps ${min_reps} \\
+        --oritentation ${orientation} \\
         --output .
     """
 }

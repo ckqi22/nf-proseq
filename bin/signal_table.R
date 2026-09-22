@@ -30,6 +30,7 @@ argv <- add_argument(argv, "--min_genebody_length", help = "Min genebody region 
 argv <- add_argument(argv, "--peak_frac",      help = "Site threshold: group-mean Signal >= gene pause-peak x this fraction (default: 0.1)", default = 0.1)
 argv <- add_argument(argv, "--noise_quantile", help = "Site noise floor = this quantile of all pause-window site Signals (default: 0.9; 0 = off)", default = 0.9)
 argv <- add_argument(argv, "--min_reps",       help = "Replicate support: >= this many replicates with Signal >= site threshold (default: 2; all required if group has fewer)", default = 2)
+argv <- add_argument(argv, "--orientation",    help = "Library orientation: 'reverse' (R1 antisense, active site = read 5' end) or 'forward' (R1 sense, active site = read 3' end)", default = "reverse")
 argv <- add_argument(argv, "--output",         help = "Output directory (writes pol2_signal_table.tsv + pol2_signal_table.note.txt) (default: ./)", default = "./")
 argv <- parse_args(argv)
 
@@ -315,7 +316,9 @@ main <- function(argv) {
         if (as.numeric(argv$noise_quantile) > 0) paste0(" = ", signif(thr$noise_floor, 3)) else "",
         ") AND >= ", argv$min_reps,
         " replicates with Signal >= the same threshold in any group (all replicates required ",
-        "if group has fewer). Count = sum of raw 5'-end counts within group (integer evidence); ",
+        "if group has fewer). Count = sum of raw ",
+        ifelse(identical(argv$orientation, "forward"), "3'-end", "5'-end"),
+        " counts within group (integer evidence; active-site end per strandedness=", argv$orientation, "); ",
         "Signal = group-mean normalized signal (per-sample normalized then averaged; missing = 0). ",
         "Single-base, 0-based half-open; signal strand = gene strand. ",
         "Divergent-promoter sites appear once per gene (site, gene) pair. ",

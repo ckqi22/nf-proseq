@@ -37,7 +37,11 @@ workflow spikein {
             [meta, spike_file]
         }
 
-    factors = SPIKEIN_SCALE(counts.map { _m, f -> f }.collect()).factors
+    factors = SPIKEIN_SCALE(
+        counts.map { meta, f -> [meta.sample, f] }        // 每样本 → [样本名, 文件]
+              .toSortedList()                             // Nextflow 原生算子：收集成 list 并按样本名自然排序
+              .map { list -> list.collect { it[1] } }     // 只留文件，顺序已固定
+    ).factors
 
     emit:
     counts  = counts    // tuple(meta, spike_count.txt) — 每样本单行整数

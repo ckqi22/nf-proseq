@@ -16,8 +16,10 @@ process BAMCOVERAGE {
     // =========================================================================
     // 链向与端向（gene-strand 约定）
     // -------------------------------------------------------------------------
-    // PRO-seq 建库 reverse：+ 基因信号落在反向比对 read 的 5'、- 基因信号落在正向比对 read 的 5'。
-    // gene-strand 命名（按基因链）：
+    // 链向由 params.strandedness 决定（与 genomecov.nf 同一约定，此模块未接线，启用时需同步）：
+    //   reverse（默认，标准 PRO-seq 建库，R1 antisense）：+ 基因信号落在反向比对 read 的 5'。
+    //   forward（R1 sense）：+ 基因信号落在正向比对 read 的 3' 端（bamCoverage 无 -3 等价，启用时需另行处理）。
+    // gene-strand 命名（按基因链，reverse 模式）：
     //   _plus  = + 链基因信号（reverse，-strand -） => 正值
     //   _minus = - 链基因信号（forward，-strand +） => 取负（-scale -1）
     // 两轨一正一负，加载进 IGV 即 gene-strand signed 视图（同官方 TrackTx/Mahat）。

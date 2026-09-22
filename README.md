@@ -88,7 +88,8 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 | `species` / `build` | mouse / null | 参考基因组；`build` 覆盖 species 映射 |
 | `sample_sheet` | samplesheet.csv | 样本表（相对启动目录） |
 | `adapter` | `I` | 接头类型：`I`/`UMI`/`HT`/`SP` |
-| `signal_mode` | single | 分析信号：`single`=单碱基 5' 端 / `full`=full-read 覆盖度 / `both`=都算 |
+| `strandedness` | `reverse` | R1 相对新生 RNA 的方向：`reverse`=R1 反向互补（antisense，标准 PRO-seq，活性位点=R1 5' 端，featureCounts `-s 2`）/ `forward`=R1 同向（sense，活性位点=R1 3' 端，featureCounts `-s 1`）。|
+| `signal_mode` | single | 分析信号：`single`=单碱基活性位点端（末端随 `strandedness`：reverse→5' 端 / forward→3' 端） / `full`=full-read 覆盖度 / `both`=都算 |
 | `normalize_methods` | cpm,fpkm | profile 表归一化（cpm/fpkm/rpkm，逗号分隔） |
 | `report` | true | 是否打包报告 |
 | `compared_groups` | — | 差异比较组列表：`A, B, FC, P, paired/unpaired` |
