@@ -41,7 +41,7 @@ process SIGNAL_TABLE {
         --peak_frac ${peak_frac} \\
         --noise_quantile ${noise_quantile} \\
         --min_reps ${min_reps} \\
-        --oritentation ${orientation} \\
+        --orientation ${orientation} \\
         --output .
     """
 }

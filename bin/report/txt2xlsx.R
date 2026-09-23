@@ -49,7 +49,7 @@ group_of <- function(name) {
   else if (grepl("\\.Cpm$",     name)) "cpm"
   else "default"
 }
-palette <- c(default   = "#ADD8E6",  # 浅蓝（Gene_id / 注释列 / 简单表）
+palette <- c(default  = "#ADD8E6",  # 浅蓝（Gene_id / 注释列 / 简单表）
             count     = "#FFFF00",  # 黄
             corrected = "#F4B183",  # 橙
             fpkm      = "#A9D08E",  # 绿
