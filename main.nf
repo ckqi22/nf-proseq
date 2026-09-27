@@ -206,7 +206,7 @@ workflow {
     // Step 6: Pol II active-site single-base distribution
     //   (produces per-base bedGraph/bigWig + single-base promoter/genebody matrices for PI)
     // ========================================================================
-    pol2_count(bam_for_pol2, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed)
+    pol2_count(bam_for_pol2, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed, prepare_genome.out.tx2gene)
 
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
     methods = params.normalize_methods ?: 'cpm,fpkm'
@@ -256,12 +256,13 @@ workflow {
         manifest = raw_norm_bigwig
             .map { meta, plus_raw, minus_raw, plus_norm, minus_norm -> [meta.group, meta.sample, plus_raw.name, minus_raw.name, plus_norm.name, minus_norm.name].join('\t') }
             .collect()
-            .map { lines -> lines.join('\n') }
+            .map { lines -> lines.sort().join('\n') }
 
         raw_norm_bws = raw_norm_bigwig
             .map { _meta, plus_raw, minus_raw, plus_norm, minus_norm -> [plus_raw, minus_raw, plus_norm, minus_norm] }
             .flatten()
             .collect()
+            .map { paths -> paths.sort { a, b -> a.toString() <=> b.toString() } }
 
         SIGNAL_TABLE(
             manifest,
@@ -269,7 +270,6 @@ workflow {
             prepare_genome.out.promoter_bed.map { _name, f -> f },
             pol2_count.out.promoter_matrix,
             pol2_count.out.genebody_matrix,
-            prepare_genome.out.representative_gtf,
             annotation_ch,
             params.strandedness?.trim() ?: 'reverse'
         )
@@ -319,11 +319,9 @@ workflow {
     // ========================================================================
     publish:
     info                = parse_config.out.info
-    representative_gtf  = prepare_genome.out.representative_gtf
     promoter_bed        = prepare_genome.out.promoter_bed.map { _name, file -> file }
     genebody_bed        = prepare_genome.out.genebody_bed.map { _name, file -> file }
     genebody_union_saf  = prepare_genome.out.genebody_union_saf.map { _name, file -> file }
-    gene_bed            = prepare_genome.out.gene_bed
     tss_bed             = prepare_genome.out.tss_bed
     chrom_sizes         = prepare_genome.out.chrom_sizes
     spike_chroms        = prepare_genome.out.spike_chroms
@@ -387,11 +385,9 @@ workflow {
 // ------------------------------------------------------------------
 output {
     info                { path "01.Info/" }
-    representative_gtf  { path "01.Info/" }
     promoter_bed        { path "01.Info/" }
     genebody_bed        { path "01.Info/" }
     genebody_union_saf  { path "01.Info/" }
-    gene_bed            { path "01.Info/" }
     tss_bed             { path "01.Info/" }
     chrom_sizes         { path "01.Info/" }
     spike_chroms        { path "01.Info/" }

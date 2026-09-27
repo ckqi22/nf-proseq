@@ -4,7 +4,7 @@
 # comparable. Each normalization method is a function; which methods to run is
 # selected via --methods (comma-separated), default "cpm,fpkm" (both).
 #
-# Input matrix (tab-separated, header):  gene_id  length  <sample1>  <sample2> ...
+# Input matrix (tab-separated, header):  gene_id  Length  <sample1>  <sample2> ...
 # Output matrix:                         gene_id  <s>.<Suffix> ...
 #   Suffix per method: Fpkm / Cpm / Spike.
 #
@@ -18,7 +18,7 @@ suppressWarnings(suppressMessages({
 
 # ── Parse args ──
 argv <- arg_parser("Normalize a count matrix (CPM/FPKM/RPKM, multi-method)")
-argv <- add_argument(argv, "--input",   help = "Count matrix (gene_id, length, samples)")
+argv <- add_argument(argv, "--input",   help = "Count matrix (gene_id, Length, samples)")
 argv <- add_argument(argv, "--methods", help = "Comma-separated: cpm | fpkm | rpkm", default = "cpm,fpkm")
 argv <- add_argument(argv, "--total_mapped", help = "Comma-separated *.main_mapped.txt (sample -> pure-main read1 mapped count, spike removed); CPM/FPKM/RPKM denominator")
 argv <- add_argument(argv, "--spike_factors", help = "Optional spikein_scale_factors.tsv (sample spike_count factor size_factor); append .Spike column = count x factor (1e6/spike_count), independent of lib_size")
@@ -45,13 +45,13 @@ main <- function(argv) {
 
     dt <- read.delim(argv$input, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
                      check.names = FALSE)
-    sample_cols <- setdiff(names(dt), c("gene_id", "length"))
+    sample_cols <- setdiff(names(dt), c("gene_id", "Length"))
     if (length(sample_cols) == 0)
         stop("[normalize] no sample columns found in ", argv$input)
 
     mat <- as.matrix(dt[, sample_cols, drop = FALSE])
     storage.mode(mat) <- "double"
-    len <- as.numeric(dt$length)
+    len <- as.numeric(dt$Length)
 
     # 归一化分母：--total_mapped 传入每样本 main_mapped（纯主 read1 mapped，已由 EXTRACT_R1 剔 spike）。
     #   不再回退 colSums（基因区计数与 total_mapped 口径不同，混用会导致跨样本 CPM 不可比），

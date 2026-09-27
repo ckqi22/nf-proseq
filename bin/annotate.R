@@ -5,7 +5,7 @@
 # annotation table are kept.
 #
 # Inputs:
-#   --raw         raw count matrix       : gene_id  length  <sample>...
+#   --raw         raw count matrix       : gene_id  Length  <sample>...
 #   --normalized  normalize.R output     : gene_id  <s>.Fpkm ...  <s>.Cpm ...
 #   --annotation  local annotation table : gene_id  gene_name ... GO_BP
 #
@@ -18,7 +18,7 @@ suppressWarnings(suppressMessages({
 
 # ── Parse args ──
 argv <- arg_parser("Merge raw + normalized counts with gene annotation")
-argv <- add_argument(argv, "--raw",        help = "Raw count matrix (gene_id, length, samples)")
+argv <- add_argument(argv, "--raw",        help = "Raw count matrix (gene_id, Length, samples)")
 argv <- add_argument(argv, "--normalized", help = "Normalized matrix (gene_id, <s>.<Suffix>)")
 argv <- add_argument(argv, "--annotation", help = "Gene annotation table (first column = gene_id)")
 argv <- add_argument(argv, "--output",     help = "Output annotated table (tsv)")
@@ -34,8 +34,8 @@ main <- function(argv) {
                        quote = "", comment.char = "")
     ann[is.na(ann)] <- ""
 
-    # raw -> Gene_id + <s>.Count (length dropped)
-    sample_cols <- setdiff(names(raw), c("gene_id", "length"))
+    # raw -> Gene_id + <s>.Count (Length dropped)
+    sample_cols <- setdiff(names(raw), c("gene_id", "Length"))
     if (length(sample_cols) == 0)
         stop("[annotate] no sample columns found in ", argv$raw)
     raw_out <- raw[, c("gene_id", sample_cols), drop = FALSE]

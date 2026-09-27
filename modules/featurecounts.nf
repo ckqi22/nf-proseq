@@ -26,7 +26,7 @@ process FEATURECOUNTS {
     }
     def strandedness = (strand == 'forward') ? 1 : 2
     """
-    ${params.feature_counts} \\
+    featureCounts \\
         -T 2 \\
         ${anno_fmt_args} \\
         -a ${annotation} \\

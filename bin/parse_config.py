@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="Parse species and information configs")
     parser.add_argument("--species_config", default="/workplace/database/database_species_taxid_config.txt", help="Path to species_config.txt")
     parser.add_argument("--information_config", default="/workplace/database/database_information_config.txt", help="Path to information_config.txt")
-    parser.add_argument("--species", default="human_19", help="Species name (e.g., human_19)")
+    parser.add_argument("--species", default="human", help="Species name (e.g., human_19)")
     parser.add_argument("--build", help="Build name (e.g., hg38), overrides species mapping")
     parser.add_argument("--gtf", help="Direct GTF file path, overrides config")
     parser.add_argument("--genome_fasta", help="Direct genome FASTA path (optional)")

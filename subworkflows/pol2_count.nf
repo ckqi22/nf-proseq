@@ -11,8 +11,8 @@
 //     - promoter.bed / genebody.bed 单碱基区域计数 → PI
 //
 
-include { GENOMECOV                                   } from '../modules/bedtools/genomecov.nf'
-include { GENOMECOV as GENOMECOV_FULL                 } from '../modules/bedtools/genomecov.nf'
+include { GENOMECOV                                     } from '../modules/bedtools/genomecov.nf'
+include { GENOMECOV as GENOMECOV_FULL                   } from '../modules/bedtools/genomecov.nf'
 include { SINGLEBASE_COUNT as SINGLEBASE_COUNT_PROMOTER } from '../modules/singlebase_count.nf'
 include { SINGLEBASE_COUNT as SINGLEBASE_COUNT_GENEBODY } from '../modules/singlebase_count.nf'
 include { SINGLEBASE_COUNT_MERGE as MERGE_PROMOTER      } from '../modules/singlebase_count_merge.nf'
@@ -21,8 +21,9 @@ include { SINGLEBASE_COUNT_MERGE as MERGE_GENEBODY      } from '../modules/singl
 workflow pol2_count {
     take:
     r1_bam        // channel: tuple(meta, r1.bam) — read1 单端化 BAM（align_bowtie2 产出）
-    promoter_bed  // channel: tuple val(name), path(promoter.bed) — 最长 transcript TSS 窗口
-    genebody_bed  // channel: tuple val(name), path(genebody.bed) — 最长 transcript gene body
+    promoter_bed  // channel: tuple val(name), path(promoter.bed) — transcript TSS 窗口
+    genebody_bed  // channel: tuple val(name), path(genebody.bed) — transcript gene body
+    tx2gene       // channel: path(tx2gene.tsv) — transcript_id → gene_id 映射
 
     main:
     // signal_type 门控：mode 保留原始 signal_mode（single|full|both），use_full 决定 PI/下游取哪套。
@@ -56,10 +57,12 @@ workflow pol2_count {
 
     MERGE_PROMOTER(promoter_counts_ch.map { _meta, f -> f }.collect(),
                    promoter_counts_ch.map { meta, _f -> meta.sample }.collect(),
-                   'pol2_promoter')
+                   'pol2_promoter',
+                   tx2gene)
     MERGE_GENEBODY(genebody_counts_ch.map { _meta, f -> f }.collect(),
                    genebody_counts_ch.map { meta, _f -> meta.sample }.collect(),
-                   'pol2_genebody')
+                   'pol2_genebody',
+                   tx2gene)
 
     emit:
     bedGraph            = GENOMECOV.out.bedgraph                // tuple(meta, _single_plus.bedgraph, _single_minus.bedgraph)

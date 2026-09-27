@@ -3,7 +3,7 @@ process POL2_SIGNAL_XLSX {
 
     input:
     path tsv          // pol2_signal_table.tsv（signal_table.R 产物，无 note 头）
-    path note_file    // pol2_signal_table.note.txt（signal_table.R 侧车 note）
+    path note_file    // pol2_signal_table.note.txt（signal_table.R 侧 note）
 
     output:
     path "PROSeq_pol2_signal.xlsx", emit: xlsx

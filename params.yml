@@ -52,10 +52,10 @@ tss:
   min_genebody_length: 800     # 最小 genebody 长度（bp），短于此值不计算 PI（实际基因全长阈值 = 此值 + genebody_offset）
   pi_pseudocount: 1e-3         # PI 分子分母同加的伪计数，避免 genebody=0 时分母为 0
 
-# ---- 信号表（逐碱基 Pol II 信号表）----
+# ---- 信号表（逐碱基 Pol II 信号表；转录本级别，位点=每转录本 pause 窗口内局部峰）----
 signal_table:
-  active_frac: 0.005          # 活跃基因：genebody 密度下限 = 候选基因密度中位数 × active_frac
-  peak_frac: 0.1              # 位点阈值：组均值 Signal >= 基因 pause 峰 × peak_frac
+  active_frac: 0.005          # 活跃转录本：genebody 密度下限 = 候选转录本密度中位数 × active_frac
+  peak_frac: 0.1              # 位点阈值（叠加在局部峰之上）：组均值 Signal >= 该转录本 pause 峰 × peak_frac
   noise_quantile: 0.9         # 位点噪声线 = 全体窗口位点 Signal 的该分位（0 = 关）
   min_reps: 2                 # 组内 >= min_reps 个重复达阈值（不足时要求全部）
 

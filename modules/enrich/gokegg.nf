@@ -10,7 +10,7 @@ process GOKEGG {
     """
     mkdir gokegg_result
 
-    ${params.r} /workplace/pipeline/code/enrichment.R \\
+    /workplace/shuixin/R/4.4.1/bin/Rscript /workplace/pipeline/code/enrichment.R \\
         --species ${params.species} \\
         --input_dir ${diff_dir} \\
         --output_dir ./gokegg_result \\

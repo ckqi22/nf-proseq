@@ -41,7 +41,7 @@ process REMOVE_RRNA {
         # 再 sort -n 使 mate 相邻 + samtools fastq 回写配对 FASTQ（-0/-s 丢弃不成对残留）。
         bowtie2 \\
             --end-to-end \\
-            --very-sensitive \\            
+            --very-sensitive \\
             -x \${prefix} \\
             -1 ${reads[0]} -2 ${reads[1]} \\
             --threads 10 2> ${meta.sample}_summary_rrna.txt \\

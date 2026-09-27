@@ -19,7 +19,7 @@ process pausing_index {
     Rscript ${projectDir}/bin/pausing_index.R \\
         --promoter_count ${promoter_count} \\
         --genebody_count ${genebody_count} \\
-        --min_genebody_length ${min_genebody_length} \\
+        --min_genebody_len ${min_genebody_length} \\
         --pseudocount ${pseudocount} \\
         --output Pausing_Index.tsv
     """

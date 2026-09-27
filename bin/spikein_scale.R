@@ -8,7 +8,7 @@
 #
 # 输入：
 #   --counts      两列（无表头）：sample \t spike_count
-#   --matrix      可选 count 矩阵（gene_id  length  <sample1> <sample2> ...）
+#   --matrix      可选 count 矩阵（gene_id  Length  <sample1> <sample2> ...）
 #                 列名需与 --counts 的 sample 一致
 #
 # 输出：
@@ -25,7 +25,7 @@ suppressWarnings(suppressMessages({
 
 argv <- arg_parser("Spike-in scale factors + matrix scaling")
 argv <- add_argument(argv, "--counts",     help = "Two columns (no header): sample \\t spike_count")
-argv <- add_argument(argv, "--matrix",     help = "Optional count matrix (gene_id length <samples>)")
+argv <- add_argument(argv, "--matrix",     help = "Optional count matrix (gene_id Length <samples>)")
 argv <- add_argument(argv, "--output_dir", help = "Output directory", default = "./")
 argv <- parse_args(argv)
 
@@ -52,13 +52,13 @@ main <- function(argv) {
     write.table(ct, out_factors, sep = "\t", row.names = FALSE, quote = FALSE)
     message("[spikein_scale] wrote ", out_factors)
 
-    # ── 可选：缩放计数矩阵（列格式同 bin/normalize.R 输入：gene_id length <samples>）──
+    # ── 可选：缩放计数矩阵（列格式同 bin/normalize.R 输入：gene_id Length <samples>）──
     if (!is.null(argv$matrix) && !is.na(argv$matrix) && nzchar(argv$matrix)) {
         if (!file.exists(argv$matrix))
             stop("[spikein_scale] --matrix not found: ", argv$matrix)
         m <- read.delim(argv$matrix, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
                         check.names = FALSE)
-        sample_cols <- setdiff(names(m), c("gene_id", "length"))
+        sample_cols <- setdiff(names(m), c("gene_id", "Length"))
         if (length(sample_cols) == 0)
             stop("[spikein_scale] no sample columns found in matrix")
 

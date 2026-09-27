@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# pausing_boxplot.R — Boxplot of per-gene pausing index by group
+# pausing_boxplot.R — Boxplot of per-transcript pausing index by group
 #
 # Input: PI table (from pausing_index.R) + groups YAML (group_name -> [samples]).
 # Output: a single PDF.
@@ -20,7 +20,7 @@ argv <- parse_args(argv)
 
 # ── Build plot data ──
 build_plot_data <- function(pi, groups) {
-    plot_data <- data.frame(gene_id = character(), PI = numeric(), Group = character(), stringsAsFactors = FALSE)
+    plot_data <- data.frame(transcript_id = character(), PI = numeric(), Group = character(), stringsAsFactors = FALSE)
     for (grp in names(groups)) {
         samples <- unlist(groups[[grp]])
         pi_cols <- paste0(samples, "_PI")
@@ -28,7 +28,7 @@ build_plot_data <- function(pi, groups) {
         grp_mean <- rowMeans(pi[, pi_cols, drop = FALSE], na.rm = TRUE)
         valid    <- !is.na(grp_mean)
         plot_data <- rbind(plot_data, data.frame(
-            gene_id = pi$gene_id[valid], PI = grp_mean[valid], Group = grp,
+            transcript_id = pi$transcript_id[valid], PI = grp_mean[valid], Group = grp,
             stringsAsFactors = FALSE))
     }
     plot_data

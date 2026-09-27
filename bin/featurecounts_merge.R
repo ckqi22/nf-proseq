@@ -6,10 +6,10 @@
 # Each input file (per-sample featureCounts output, SAF mode) has columns:
 #   Geneid  Chr  Start  End  Strand  Length  <sample>.bam
 # This merges them on Geneid into:
-#   gene_id  length  <sample1>  <sample2> ...
+#   gene_id  Length  <sample1>  <sample2> ...
 #
 #   - skip the leading '# Program:featureCounts ...' comment line(s)
-#   - carry 'length' from the first file (annotation-derived, identical across
+#   - carry 'Length' from the first file (annotation-derived, identical across
 #     samples) so it stays a single column
 #   - strip trailing '.bam' from sample columns so they match sample names
 # =============================================================================
@@ -64,9 +64,9 @@ main <- function(argv) {
         res <- merge(res, one, by = "gene_id", all = TRUE, sort = FALSE)
     }
 
-    res$length <- length_by_gene[match(res$gene_id, names(length_by_gene))]
-    sample_cols <- setdiff(names(res), c("gene_id", "length"))
-    res <- res[c("gene_id", "length", sample_cols)]
+    res$Length <- length_by_gene[match(res$gene_id, names(length_by_gene))]
+    sample_cols <- setdiff(names(res), c("gene_id", "Length"))
+    res <- res[c("gene_id", "Length", sample_cols)]
 
     write.table(res, file = argv$output, sep = "\t", quote = FALSE, row.names = FALSE)
     message("[featurecounts_merge] ", nrow(res), " genes x ", ncol(res),

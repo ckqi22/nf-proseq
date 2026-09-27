@@ -10,7 +10,7 @@ process PCA_PLOT {
     """
     mkdir -p pca_out
 
-    ${params.r} /workplace/pipeline/code/PCA_plot.R \\
+    /workplace/shuixin/R/4.4.1/bin/Rscript /workplace/pipeline/code/PCA_plot.R \\
       --input_dir ${diff_dir} \\
       --output_dir pca_out \\
       --width 7 \\

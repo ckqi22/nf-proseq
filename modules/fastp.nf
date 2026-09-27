@@ -16,11 +16,12 @@ process FASTP {
     if (adapter_type == "UMI" || adapter_type == "HT" || adapter_type == "SP") {
         args = "-U --umi_loc=per_read --umi_len=${params.umi_length} --umi_prefix=UMI --trim_poly_x"
     } else if (adapter_type == "I") {
-        // PRO-seq 标准 3' 接头 (Illumina TruSeq small RNA RA3)。
+        // PRO-seq 标准 3' 接头 (Illumina TruSeq small RNA RA3: TGGAATTCTCGGGTGCCAAGG)。
         // --trim_poly_g 去除NovaSeq 2-color 化学产生的 poly-G 尾巴
         // --trim_poly_x 去掉末端单碱基 poly 尾巴；
         // 接头序列仅在 params.adapter_sequence 提供时才显式传 --adapter_sequence
-        def adapter_args = params.adapter_sequence ? "--adapter_sequence ${params.adapter_sequence}" : ""
+        def adapter_seq = params.adapter_sequence?.trim() ? params.adapter_sequence.trim() : (meta.single_end ? "TGGAATTCTCGGGTGCCAAGG" : "")
+        def adapter_args = adapter_seq ? "--adapter_sequence ${adapter_seq}" : ""
         args = ("${adapter_args} --trim_poly_g --trim_poly_x").trim()
     }
     if (meta.single_end) {
@@ -33,7 +34,7 @@ process FASTP {
         detect_adapter_args = "--detect_adapter_for_pe"
     }
     """
-    ${params.fastp} \\
+    fastp \\
     ${reads_args} \\
     ${trimmed_reads_args} \\
     --json ${meta.sample}.fastp.json \\
