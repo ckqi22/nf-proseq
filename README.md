@@ -131,7 +131,7 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 | `04.Alignment/` | BAM/BAI、比对率 |
 | `05.Quantification/` | 基因体计数矩阵、profile 表（`.Fpkm/.Cpm/.Rpkm/.Spike`）、spike 因子表 |
 | `06.Differential_Expression/` | DESeq2 结果、CheckDE、火山图、PCA |
-| `07.enrich/` | GO/KEGG/GSEA 富集结果 |
+| `07.Enrich/` | GO/KEGG/GSEA 富集结果 |
 | `08.Pol2_coverage/` | 覆盖度 bedGraph/bigWig（raw/cpm/spike × single/full）、组平均 bigWig、`pol2_signal_table.tsv`（逐碱基信号表） |
 | `09.TSS_Metagene/` | metagene profile/heatmap 图与矩阵 |
 | `10.Pausing_Index/` | 暂停指数表、boxplot |

@@ -47,9 +47,9 @@ process ALIGN {
         2> ${meta.sample}_summary_bowtie2.txt
 
     samtools view -@ 2 -bS ${flag_args} -F 4 -q 20 ${meta.sample}.sam \\
-        | samtools sort -@ 10 -o ${meta.sample}.bam
+        | samtools sort -@ ${task.cpus} -o ${meta.sample}.bam
     samtools view -@ 2 -bS -f ${unmapped_flag} ${meta.sample}.sam \\
-        | samtools sort -@ 10 -o ${meta.sample}_unmapped.bam
+        | samtools sort -@ ${task.cpus} -o ${meta.sample}_unmapped.bam
     samtools index -@ 1 ${meta.sample}.bam
     rm -f ${meta.sample}.sam
     """

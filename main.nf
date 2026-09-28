@@ -105,7 +105,7 @@ workflow {
     // ========================================================================
     // Step 1b: 去 rRNA（opt-in，比对前）
     //   bowtie2 比对 rRNA_index，只按 R1 判定，保留 R1 未比对 rRNA 的 reads；
-    //   remove_rrna=false 或物种段未配 rRNA_index 时直接用 trimmed reads。
+    //   remove_rrna=false 时直接用 trimmed reads。
     // ========================================================================
     rrna_index_ch = config_ch.map { it -> it.rRNA_index ?: '' }
                              .filter { s -> s.trim() }
@@ -425,7 +425,7 @@ output {
     de_plot         { path "06.Differential_Expression/" }
     pca_plot        { path "06.Differential_Expression/" }
 
-    enrich_result   { path "07.enrich/" }
+    enrich_result   { path "07.Enrich/" }
 
     coverage_bw             { path "08.Pol2_coverage/" }
     coverage_bw_cpm         { path "08.Pol2_coverage/" }
