@@ -44,7 +44,7 @@ process BAMCOVERAGE {
         --Offset 1 \\
         --filterRNAstrand forward \\
         --binSize 1 \\
-        --numberOfProcessors 10 \\
+        --numberOfProcessors ${task.cpus} \\
         --normalizeUsing None \\
         --skipNAs
 
@@ -56,7 +56,7 @@ process BAMCOVERAGE {
         --Offset 1 \\
         --filterRNAstrand reverse \\
         --binSize 1 \\
-        --numberOfProcessors 10 \\
+        --numberOfProcessors ${task.cpus} \\
         --normalizeUsing None \\
         --skipNAs
 

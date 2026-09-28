@@ -26,7 +26,7 @@ process REMOVE_RRNA {
             -x \${prefix} \\
             -U ${reads[0]} \\
             --no-unal \\
-            --threads 10 \\
+            --threads ${task.cpus} \\
             --un-gz ${meta.sample}_R1_rrna_removed.fastq.gz  \\
             > /dev/null 2> ${meta.sample}_summary_rrna.txt
         """
@@ -44,7 +44,7 @@ process REMOVE_RRNA {
             --very-sensitive \\
             -x \${prefix} \\
             -1 ${reads[0]} -2 ${reads[1]} \\
-            --threads 10 2> ${meta.sample}_summary_rrna.txt \\
+            --threads ${task.cpus} 2> ${meta.sample}_summary_rrna.txt \\
             | awk 'BEGIN{OFS="\\t"} /^@/{print; next} {f=\$2+0; if ((int(f/64)%2 && int(f/4)%2) || (int(f/128)%2 && int(f/8)%2)) print}' \\
             | samtools view -bS - \\
             | samtools sort -n - \\

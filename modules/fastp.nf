@@ -40,6 +40,7 @@ process FASTP {
     --json ${meta.sample}.fastp.json \\
     --html ${meta.sample}.fastp.html \\
     --report_title ${meta.sample} \\
+    --thread ${task.cpus} \\
     ${detect_adapter_args} \\
     ${args} > ${meta.sample}.log 2>&1
     """

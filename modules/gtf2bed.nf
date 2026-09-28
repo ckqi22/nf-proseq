@@ -1,6 +1,6 @@
 process GTF2BED {
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path gtf
@@ -13,7 +13,6 @@ process GTF2BED {
 
     script:
     """
-    source /home/ck/miniconda3/bin/activate renv
     Rscript ${projectDir}/bin/gtf2bed.R \\
         --gtf ${gtf} \\
         --tss_upstream ${params.tss.upstream} \\

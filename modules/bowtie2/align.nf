@@ -42,7 +42,7 @@ process ALIGN {
         ${orientation_args} \\
         -x \${prefix} \\
         ${reads_args} \\
-        --threads 10 \\
+        --threads ${task.cpus} \\
         -S ${meta.sample}.sam \\
         2> ${meta.sample}_summary_bowtie2.txt
 

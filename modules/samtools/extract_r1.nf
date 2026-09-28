@@ -15,30 +15,30 @@ process EXTRACT_R1 {
     // 剔 spike 用 spike_chroms 名单精确匹配（@SQ 头 + body $3），不依赖 spike_ 前缀。
     if (meta.single_end) {
         """
-        samtools view -c ${bam} > ${meta.sample}.total_mapped.txt
+        samtools view -@ ${task.cpus} -c ${bam} > ${meta.sample}.total_mapped.txt
         if [ -n "${spike_chroms}" ]; then
-            samtools view -h ${bam} \\
+            samtools view -@ ${task.cpus} -h ${bam} \\
                 | awk 'NR==FNR{sp[\$1]=1; next} /^@SQ/{split(\$2,a,":"); if(a[2] in sp) next} /^@/{print; next} {if(\$3 in sp) next; print}' ${spike_chroms} - \\
-                | samtools view -b -o ${meta.sample}.r1.bam -
+                | samtools view -@ ${task.cpus} -b -o ${meta.sample}.r1.bam -
         else
             cp ${bam} ${meta.sample}.r1.bam
         fi
-        samtools view -c ${meta.sample}.r1.bam > ${meta.sample}.main_mapped.txt
+        samtools view -@ ${task.cpus} -c ${meta.sample}.r1.bam > ${meta.sample}.main_mapped.txt
         """
     } else {
         """
-        samtools view -f 64 -F 4 -c ${bam} > ${meta.sample}.total_mapped.txt
+        samtools view -@ ${task.cpus} -f 64 -F 4 -c ${bam} > ${meta.sample}.total_mapped.txt
         if [ -n "${spike_chroms}" ]; then
-            samtools view -f 64 -F 4 -h ${bam} \\
+            samtools view -@ ${task.cpus} -f 64 -F 4 -h ${bam} \\
                 | awk 'BEGIN{FS=OFS="\\t"} /^@/{print; next} {\$2=(int(\$2/16)%2)?16:0; print}' \\
                 | awk 'NR==FNR{sp[\$1]=1; next} /^@SQ/{split(\$2,a,":"); if(a[2] in sp) next} /^@/{print; next} {if(\$3 in sp) next; print}' ${spike_chroms} - \\
-                | samtools view -b -o ${meta.sample}.r1.bam -
+                | samtools view -@ ${task.cpus} -b -o ${meta.sample}.r1.bam -
         else
-            samtools view -f 64 -F 4 -h ${bam} \\
+            samtools view -@ ${task.cpus} -f 64 -F 4 -h ${bam} \\
                 | awk 'BEGIN{FS=OFS="\\t"} /^@/{print; next} {\$2=(int(\$2/16)%2)?16:0; print}' \\
-                | samtools view -b -o ${meta.sample}.r1.bam -
+                | samtools view -@ ${task.cpus} -b -o ${meta.sample}.r1.bam -
         fi
-        samtools view -c ${meta.sample}.r1.bam > ${meta.sample}.main_mapped.txt
+        samtools view -@ ${task.cpus} -c ${meta.sample}.r1.bam > ${meta.sample}.main_mapped.txt
         """
     }
 }

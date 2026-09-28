@@ -1,6 +1,6 @@
 process GTF2SAF {
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path gtf
@@ -10,7 +10,6 @@ process GTF2SAF {
 
     script:
     """
-    source /home/ck/miniconda3/bin/activate renv
     Rscript ${projectDir}/bin/gtf2saf.R \\
         --gtf ${gtf} \\
         --genebody_offset ${params.tss.genebody_offset} \\

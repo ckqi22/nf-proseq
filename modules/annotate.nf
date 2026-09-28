@@ -1,7 +1,7 @@
 process ANNOTATE {
     tag "${name}"
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path raw             // raw count matrix (gene_id, length, samples)
@@ -14,8 +14,6 @@ process ANNOTATE {
 
     script:
     """
-    source /home/ck/miniconda3/bin/activate renv
-
     Rscript ${projectDir}/bin/annotate.R \\
         --raw ${raw} \\
         --normalized ${normalized} \\

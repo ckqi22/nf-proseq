@@ -1,7 +1,7 @@
 process SINGLEBASE_COUNT_MERGE {
     tag "${out_name}"
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path(counts)          // list of per-sample count files (collected)
@@ -14,8 +14,6 @@ process SINGLEBASE_COUNT_MERGE {
 
     script:
     """
-    source /home/ck/miniconda3/bin/activate renv
-
     Rscript ${projectDir}/bin/singlebase_count_merge.R \\
         --sample ${samples.join(',')} \\
         --count  ${counts.join(',')} \\

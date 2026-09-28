@@ -27,7 +27,7 @@ process FEATURECOUNTS {
     def strandedness = (strand == 'forward') ? 1 : 2
     """
     featureCounts \\
-        -T 2 \\
+        -T ${task.cpus} \\
         ${anno_fmt_args} \\
         -a ${annotation} \\
         ${type_args} \\

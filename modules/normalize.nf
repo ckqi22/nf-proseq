@@ -1,7 +1,7 @@
 process NORMALIZE {
     tag "${name}"
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path matrix          // count matrix (gene_id, length, samples)
@@ -16,8 +16,6 @@ process NORMALIZE {
     script:
     def spike_arg = spike_factors ? "--spike_factors ${spike_factors}" : ""
     """
-    source /home/ck/miniconda3/bin/activate renv
-
     Rscript ${projectDir}/bin/normalize.R \\
         --input ${matrix} \\
         --methods ${methods} \\

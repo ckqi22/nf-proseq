@@ -13,7 +13,7 @@ process FASTQC {
     """
     fastqc \\
         ${args} \\
-        --threads 4 \\
+        --threads ${task.cpus} \\
         ${reads}
     """
 }

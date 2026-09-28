@@ -16,7 +16,7 @@ process BOWTIE2_BUILD {
     mkdir bowtie2
     bowtie2-build \\
     $args \\
-    --threads 4 \\
+    --threads ${task.cpus} \\
     $fasta \\
     bowtie2/${fasta.baseName}
     """

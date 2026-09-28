@@ -1,7 +1,7 @@
 process SIGNAL_TABLE {
     tag "signal_table"
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     val manifest          // 6 列 TSV（无表头）：group \t sample \t plus_raw \t minus_raw \t plus_cpm \t minus_cpm（bigWig basename）
@@ -24,8 +24,6 @@ process SIGNAL_TABLE {
     def noise_quantile = st.noise_quantile   ?: 0.9
     def min_reps       = st.min_reps         ?: 2
     """
-    source /home/ck/miniconda3/bin/activate renv
-
     printf '%s\n' '${manifest}' > manifest.tsv
 
     Rscript ${projectDir}/bin/signal_table.R \\

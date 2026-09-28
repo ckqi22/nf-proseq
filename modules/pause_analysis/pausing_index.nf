@@ -1,7 +1,7 @@
 process pausing_index {
     tag "pausing_index"
 
-    container "bio-base:1.0.0"
+    container "nf-proseq:1.0.0"
 
     input:
     path promoter_count     // promoter count matrix (gene_id, length, <samples>...)
@@ -14,8 +14,6 @@ process pausing_index {
     def min_genebody_length = params.tss.min_genebody_length ?: 800
     def pseudocount     = params.tss.pi_pseudocount ?: 1e-3
     """
-    source /home/ck/miniconda3/bin/activate renv
-
     Rscript ${projectDir}/bin/pausing_index.R \\
         --promoter_count ${promoter_count} \\
         --genebody_count ${genebody_count} \\
