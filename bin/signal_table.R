@@ -182,8 +182,8 @@ build_site_universe <- function(man, g, active) {
 # 位点级：局部峰检测 —— 同转录本内按 pos 邻位比较，缺失邻位 = 0
 mark_local_peaks <- function(sites, site_max) {
     is_peak <- rep(FALSE, nrow(sites))
-    for (gi in unique(sites$gene_idx)) {
-        idx  <- which(sites$gene_idx == gi)
+    grp <- split(seq_len(nrow(sites)), sites$gene_idx)
+    for (idx in grp) {
         pos  <- sites$pos[idx]; sig <- site_max[idx]
         m_left  <- match(pos - 1L, pos); left  <- ifelse(is.na(m_left),  0, sig[m_left])
         m_right <- match(pos + 1L, pos); right <- ifelse(is.na(m_right), 0, sig[m_right])
