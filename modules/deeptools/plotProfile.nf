@@ -29,10 +29,11 @@ process PLOTPROFILE {
         ${pg} \\
         --dpi 300 \\
         --yAxisLabel "${ylabel}" \\
+        --regionsLabel transcripts \\
         --outFileName ${meta.sample}_metagene_profile_${meta.sig}.pdf \\
         --outFileNameData ${meta.sample}_metagene_profile_${meta.sig}_matrix.tsv
 
-    convert \\
+    magick \\
         -density 300 -quality 100 \\
         ${meta.sample}_metagene_profile_${meta.sig}.pdf \\
         ${meta.sample}_metagene_profile_${meta.sig}.tiff

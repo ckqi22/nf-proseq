@@ -4,12 +4,11 @@
 #                   打包成 PROSeq_pausing.xlsx
 #
 # 每个样本一个 sheet（sheet 名 = 样本名），所有 sheet 列名与列序完全一致：
-#   TranscriptID, gene_id, chr, start, end, strand, Length, Annotation,
+#   TranscriptID, chr, start, end, strand, Length, Annotation,
 #   Pausing Index, Promoter Reads(-{upstream},{downstream}), GeneBody Reads({genebody_offset},TES)
 #
 # 列来源：
 #   TranscriptID = Pausing_Index.tsv 的 transcript_id
-#   gene_id     = Pausing_Index.tsv 的 gene_id
 #   chr/strand = promoter.bed（各 transcript，第 1/6 列）
 #   start      = TSS - upstream（promoter 5' 边界，取自 promoter.bed）
 #   end        = TES（基因 3' 端，取自 genebody.bed）
@@ -86,7 +85,7 @@ if (length(pi_cols) == 0)
     stop("[pausing_xlsx] no *_PI column found in ", args$pi)
 samples <- sub("_PI$", "", pi_cols)
 
-# ── 坐标 / 注释（按 gene_id 对齐到代表 transcript 的 promoter/genebody）──
+# ── 坐标 / 注释（按 transcript_id 对齐到各 transcript 的 promoter/genebody）──
 pidx <- match(pi$transcript_id, prom_bed$GeneID)
 gidx <- match(pi$transcript_id, gb_bed$GeneID)
 if (anyNA(pidx) || anyNA(gidx))
@@ -132,7 +131,6 @@ wb <- createWorkbook()
 for (s in samples) {
     df <- data.frame(
         TranscriptID = pi$transcript_id,
-        gene_id      = pi$gene_id,
         chr          = chr,
         start        = start,
         end          = end,
@@ -159,7 +157,7 @@ for (s in samples) {
                  rows = 1, cols = j)
     }
     freezePane(wb, sname, firstActiveRow = 2)
-    message("[pausing_xlsx] sheet '", sname, "': ", nrow(df), " genes")
+    message("[pausing_xlsx] sheet '", sname, "': ", nrow(df), " transcripts")
 }
 
 saveWorkbook(wb, args$output, overwrite = TRUE)

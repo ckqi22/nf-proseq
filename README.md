@@ -12,10 +12,6 @@ PRO-seq 全流程自动化：从 fastq 出发，完成质控、比对、spike-in
 |---|---|
 | Nextflow | DSL2，需 v25.x（`into/tap/multiMap/-log` 已移除的算子不再使用） |
 | 软件 | bowtie2、samtools、bedtools、deeptools、featureCounts、Rscript、python3、fastp、fastq_screen |
-| 运行方式 | 宿主裸跑（软件用绝对路径，见 `nextflow.config` 的 `params`）；可选 `singularity` profile |
-
-软件路径、数据库路径统一在 [nextflow.config](nextflow.config) 的 `params` 里配置（`feature_counts`、`r`、`python`、`fastp` 等），
-deeptools 等其余工具路径在各模块内写死绝对路径。
 
 ---
 
@@ -66,6 +62,7 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 `params.yml` 里 `species` + `build` 指定用哪套参考；`gtf`/`genome_fasta` 可直接给路径覆盖数据库。
 
 ### 3.3 spike-in（可选）
+留空 = 完全跳过 spike-in（库大小 CPM 归一化）。
 
 | 参数 | 作用 |
 |---|---|
@@ -75,9 +72,8 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 | `spike_chroms` | spike 染色体名单文件（配合 `spike_index` 必填） |
 | `spike_min_fraction` | spike 占比下限（`spike_count / total_mapped`），`<=` 此值报错退出；`0.0` = 仅拒绝 0 spike reads |
 
-留空 = 完全跳过 spike-in（库大小 CPM 归一化）。
 
-> `spike_count` 只数 read1（与下游信号口径一致，PE 不再把 read2 算进去）。开 spike 时任一占比不达标的样本会直接 fail 退出，而不是被下游 join 静默丢弃。
+> `spike_count` 只统计 R1。开 spike 时任一占比不达标的样本会直接 fail 退出。
 
 ---
 
@@ -88,7 +84,7 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 | `species` / `build` | mouse / null | 参考基因组；`build` 覆盖 species 映射 |
 | `sample_sheet` | samplesheet.csv | 样本表（相对启动目录） |
 | `adapter` | `I` | 接头类型：`I`/`UMI`/`HT`/`SP` |
-| `strandedness` | `reverse` | R1 相对新生 RNA 的方向：`reverse`=R1 反向互补（antisense，标准 PRO-seq，活性位点=R1 5' 端，featureCounts `-s 2`）/ `forward`=R1 同向（sense，活性位点=R1 3' 端，featureCounts `-s 1`）。|
+| `strandedness` | `reverse` | R1 相对新生 RNA 的方向：`reverse`=R1 反向互补（antisense，标准 PRO-seq，活性位点=R1 5' 端，featureCounts `-s 2`）/ `forward`=R1 同向（sense，小RNA建库，活性位点=R1 3' 端，featureCounts `-s 1`）。|
 | `signal_mode` | single | 分析信号：`single`=单碱基活性位点端（末端随 `strandedness`：reverse→5' 端 / forward→3' 端） / `full`=full-read 覆盖度 / `both`=都算 |
 | `normalize_methods` | cpm,fpkm | profile 表归一化（cpm/fpkm/rpkm，逗号分隔） |
 | `report` | true | 是否打包报告 |
@@ -97,7 +93,7 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 
 QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值等分别在 `threshold:`、`tss:`、`metagene:`、`diff:`、`signal_table:` 段配置。
 
-`signal_table:` 段（逐碱基信号表阈值）：`active_frac`（活跃基因 genebody 密度下限）、`peak_frac`（位点阈值）、`noise_quantile`（噪声分位，0=关）、`min_reps`（组内重复数下限）；`min_genebody_length` 复用 `tss.min_genebody_length`。
+`signal_table:` 段（逐碱基信号表阈值）：`active_frac`（活跃转录本 genebody 密度下限）、`peak_frac`（位点阈值，叠加在局部峰之上）、`noise_quantile`（噪声分位，0=关）、`min_reps`（组内重复数下限）；`min_genebody_length` 复用 `tss.min_genebody_length`。
 
 > **信号与归一化命名约定**（bigWig/bedGraph）：`{sample}_[single|full]_[plus|minus]_[cpm|spike].{bedgraph|bigWig}`
 > - `plus`/`minus` = 基因链方向信号（PRO-seq reverse 建库约定，已处理链向）。
@@ -108,7 +104,9 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 
 ## 5. 工作流步骤
 
-0. **配置解析 / 基因组准备**：`parse_config` → `prepare_genome`（代表转录本 GTF + promoter/genebody/gene BED + genebody-union SAF + bowtie2 索引）。
+> **口径说明**：定量、差异、富集为**基因级**（featureCounts 按 `gene_id` 合并）；Pol II 覆盖度、暂停指数、信号表为**转录本级**（promoter/genebody 计数矩阵含 `transcript_id, gene_id, Length` 三键列）。
+
+0. **配置解析 / 基因组准备**：`parse_config` → `prepare_genome`（promoter/genebody/tss BED（转录本口径）+ tx2gene + genebody-union SAF + bowtie2 索引）。
 1. **质控**：Fastp 去接头 + FastQC（raw/trimmed）。
 2. **比对**：Bowtie2（read1 单端化供覆盖度分析）。
 3. **spike-in**（条件）：统计每样本 spike reads，生成归一化因子。
@@ -118,7 +116,7 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 7. **Pol II 覆盖度**：bedtools genomecov → bedGraph/bigWig（按 `signal_mode` 门控：single=单碱基 5' 端 / full=full-read / both=两者都算；各出 raw + cpm，开 spike 时再并行出 spike 轨）。
 8. **TSS metagene**：deeptools computeMatrix + plotProfile/plotHeatmap（每样本 + 组平均；开 spike 用 spike 轨、否则 CPM，命名随信号）。
 9. **暂停指数**：promoter / genebody 单碱基计数比值。
-10. **信号表**（`signal_mode != full`）：逐碱基 Pol II 活性位点（活跃基因 pause 窗口，`Count`=组内 raw 末端数求和、`Signal`=组内归一化均值，归一化轨随 spike/CPM 切换）→ `pol2_signal_table.tsv`。
+10. **信号表**（`signal_mode != full`）：逐碱基 Pol II 活性位点（活跃转录本 pause 窗口内局部峰，`Count`=组内 raw 末端数求和、`Signal`=组内归一化均值，归一化轨随 spike/CPM 切换）→ `pol2_signal_table.tsv`。
 11. **报告打包**（条件）：Report.R 汇总（信号表落入报告 `14.Pol_II_active_site/14.1.PROSeq_profiling/`）。
 
 ---
@@ -127,7 +125,7 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 
 | 目录 | 内容 |
 |---|---|
-| `01.Info/` | 参考基因组信息、代表转录本 GTF、promoter/genebody/gene/tss BED、genebody-union SAF、chrom.sizes、spike 染色体名单 |
+| `01.Info/` | 参考基因组信息、promoter/genebody/tss BED（转录本口径）、genebody-union SAF、chrom.sizes、spike 染色体名单 |
 | `02.Fastqc/` | FastQC raw/trimmed（zip + html） |
 | `03.Data_QC/` | Fastp 报告、trimmed reads、碱基质量图、统计 |
 | `04.Alignment/` | BAM/BAI、比对率 |
