@@ -15,7 +15,7 @@ process PROCESS_FASTP {
     ${params.python} /workplace/pipeline/WTSS/scripts/fastp_results_organise.py \\
         -i ./ \\
         -o ./ \\
-        --q30_thres 0.7 \\
+        --q30_thres ${params.threshold.q30_thres} \\
         --dup_thres ${params.threshold.duplicate_rate} \\
         --data_amount ${params.threshold.data_amount} \\
         --data_percentage ${params.threshold.data_percentage}

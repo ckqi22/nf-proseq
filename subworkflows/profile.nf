@@ -16,10 +16,10 @@ workflow profile {
     methods       // channel: val ("cpm,fpkm")
     name          // channel: val ("genebody" | "promoter" | "pol2")
     spike_factors // channel: path(spikein_scale_factors.tsv) — 空 list 表示无 spike
-    total_mapped  // channel: path list — collected *.total_mapped.txt（read1 mapped count）
+    main_mapped   // channel: path list — collected *.main_mapped.txt（read1 mapped count，剔 spike 后）
 
     main:
-    NORMALIZE(matrix, methods, name, spike_factors, total_mapped)
+    NORMALIZE(matrix, methods, name, spike_factors, main_mapped)
     ANNOTATE(matrix, NORMALIZE.out.normalized, annotation, name)
 
     emit:

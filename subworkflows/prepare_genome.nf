@@ -1,9 +1,8 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: prepare_genome
-// Resolve reference genome (fasta + bowtie2 index) and generate
-// BED (tss/promoter/genebody) + tx2gene map + genebody-union SAF annotations
-// from the reference GTF.
+// 解析参考基因组（fasta + bowtie2 index），并从参考 GTF 生成
+// BED（tss/promoter/genebody）+ tx2gene 映射 + genebody-union SAF 注释。
 //
 
 include { GTF2SAF } from '../modules/gtf2saf.nf'

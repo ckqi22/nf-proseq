@@ -31,7 +31,6 @@ include { pause_analysis              } from './subworkflows/pause_analysis.nf'
 include { metagene                    } from './subworkflows/metagene.nf'
 include { metagene_group              } from './subworkflows/metagene_group.nf'
 include { profile as profile_genebody } from './subworkflows/profile.nf'
-include { profile as profile_promoter } from './subworkflows/profile.nf'
 include { SIGNAL_TABLE                } from './modules/signal_table.nf'
 include { report as report_package    } from './subworkflows/report.nf'
 
@@ -209,10 +208,9 @@ workflow {
     pol2_count(bam_for_pol2, prepare_genome.out.promoter_bed, prepare_genome.out.genebody_bed, prepare_genome.out.tx2gene)
 
     // Step 6b: 生成带注释 + 原始 count + 标准化值的 profile 表
-    methods = params.normalize_methods ?: 'cpm,fpkm'
+    methods = 'cpm,fpkm'
     profile_genebody(quantification.out.genebody_matrix, annotation_ch, methods, 'genebody', spike_factors_ch,
                      align_bowtie2.out.main_mapped.map { _m, f -> f }.collect())
-    // profile_promoter(pol2_count.out.promoter_matrix, annotation_ch, methods, 'promoter')
 
     // ========================================================================
     // Step 7: TSS Metagene profiles（deepTools：每样本 profile + heatmap；
@@ -289,10 +287,9 @@ workflow {
         report_package(
             preprocess.out.statistics,
             align_bowtie2.out.alignRate,
-            preprocess.out.fastqc_raw_zip,
-            preprocess.out.fastqc_trimmed_zip,
             preprocess.out.base_quality_plot,
             diff_result_ch,
+            profile_genebody.out.annotated,
             enrich_result_ch,
             de_plot_ch,
             tss_metagene_plot_all.mix(tss_metagene_matrix_all),
@@ -365,7 +362,6 @@ workflow {
     coverage_full_bw_spike  = pol2_count.out.bigwig_full_spike.map { _meta, plus, minus -> [plus, minus] }
     pol2_signal_table       = signal_table_ch
     genebody_profile        = profile_genebody.out.annotated
-    // promoter_profile    = profile_promoter.out.annotated
 
     spike_factors               = spike_factors_out
     metagene_plot               = tss_metagene_plot_all
@@ -418,7 +414,6 @@ output {
     genebody_matrix         { path "05.Quantification/" }
     genebody_profile        { path "05.Quantification/" }
     spike_factors           { path "05.Quantification/" }
-    // promoter_profile        { path "05.Quantification/" }
 
     diff_result     { path "06.Differential_Expression/" }
     checkde_result  { path "06.Differential_Expression/" }

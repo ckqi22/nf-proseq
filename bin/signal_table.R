@@ -32,6 +32,7 @@ argv <- add_argument(argv, "--noise_quantile", help = "Site noise floor = this q
 argv <- add_argument(argv, "--min_reps",       help = "Replicate support: >= this many replicates with Signal >= site threshold (default: 2; all required if group has fewer)", default = 2)
 argv <- add_argument(argv, "--orientation",    help = "Library orientation: 'reverse' (R1 antisense, active site = read 5' end) or 'forward' (R1 sense, active site = read 3' end)", default = "reverse")
 argv <- add_argument(argv, "--output",         help = "Output directory (writes pol2_signal_table.tsv + pol2_signal_table.note.txt) (default: ./)", default = "./")
+argv <- add_argument(argv, "--note_template",  help = "Note template with {active_frac}/{peak_frac}/{noise_quantile}/{min_reps}/{active_end} placeholders")
 argv <- parse_args(argv)
 
 # ── 输入读取 ──
@@ -192,14 +193,13 @@ mark_local_peaks <- function(sites, site_max) {
     is_peak
 }
 
-# 位点阈值 = max(转录本峰值 × peak_frac, 噪声线)；返回 list(thr, noise_floor)
+# 位点阈值 = max(转录本峰值 × peak_frac, 噪声线)；返回与 sites 对齐的阈值向量
 site_thresholds <- function(site_max, sites, peak_frac, noise_q) {
     transcript_peak <- ave(site_max, sites$gene_idx, FUN = max)   # 每转录本 pause 峰，与 sites 对齐
     noise_floor <- if (noise_q > 0) as.numeric(quantile(site_max, noise_q)) else 0
     message("[signal_table] noise floor (P", round(noise_q * 100),
             " of site Signals) = ", signif(noise_floor, 3))
-    list(thr = pmax(transcript_peak * peak_frac, noise_floor),
-         noise_floor = noise_floor)
+    pmax(transcript_peak * peak_frac, noise_floor)
 }
 
 # 位点保留：局部峰 且 任一组（组均值 >= 阈值 且 >= min_reps 重复 >= 阈值）
@@ -256,12 +256,14 @@ main <- function(argv) {
     g <- g[g$transcript_id %in% mats$prom$transcript_id, , drop = FALSE]
     mi <- match(g$transcript_id, mats$prom$transcript_id)
     g$gene_id  <- mats$prom$gene_id[mi]
-    g$prom_len <- mats$prom$length[mi]; g$gb_len <- mats$gbd$length[mi]
-    g <- g[g$gb_len >= as.integer(argv$min_genebody_len), , drop = FALSE]
+    g$prom_len <- mats$prom$length[mi]
+    g$gb_len   <- mats$gbd$length[mi]
+    keep <- g$gb_len >= as.integer(argv$min_genebody_len)
+    g  <- g[keep, , drop = FALSE]
+    mi <- mi[keep]
     message("[signal_table] candidate transcripts (promoter.bed ∩ matrices, body >= ",
             argv$min_genebody_len, " bp): ", nrow(g))
     if (!nrow(g)) stop("[signal_table] no candidate transcripts")
-    mi <- match(g$transcript_id, mats$prom$transcript_id)
     libsize   <- colSums(mats$gbd$counts)
     prom_dens <- count_to_density(mats$prom$counts[mi, man$sample, drop = FALSE], libsize, g$prom_len)
     gb_dens   <- count_to_density(mats$gbd$counts[mi, man$sample, drop = FALSE], libsize, g$gb_len)
@@ -282,7 +284,7 @@ main <- function(argv) {
             sum(is_peak), " / ", nrow(uni$sites))
     thr <- site_thresholds(site_max, uni$sites,
                            as.numeric(argv$peak_frac), as.numeric(argv$noise_quantile))
-    keep <- filter_sites(uni$sites, uni$cpm_mat, man, groups, mean_sig, thr$thr,
+    keep <- filter_sites(uni$sites, uni$cpm_mat, man, groups, mean_sig, thr,
                          as.integer(argv$min_reps), is_peak)
     if (!sum(keep)) stop("[signal_table] no sites survive the site-level cascade")
 
@@ -306,26 +308,12 @@ main <- function(argv) {
     chrom_levels <- seqnames(si)[seqnames(si) %in% unique(out$chrom)]
     out <- out[order(factor(out$chrom, levels = chrom_levels), out$start, out$Strand), ]
 
-    note <- paste0(
-        "Per-base Pol II signal table of active protein-coding transcripts' pause windows. ",
-        "Transcript standard: protein-coding transcript -> active ",
-        "(promoter density > 0 AND genebody density >= median density of candidate transcripts x ",
-        argv$active_frac, " in any group; fig4-calibrated ~0.2 CPM/kb, ~ NRSA 4 reads/kb at 20M lib). ",
-        "Region: pause window = promoter.bed (params.yml single source). ",
-        "Site standard: local peak (per-transcript local maximum in the pause window) AND ",
-        "group-mean Signal >= max(transcript pause-peak x ", argv$peak_frac,
-        ", noise floor = P", round(as.numeric(argv$noise_quantile) * 100),
-        " of all pause-window site Signals",
-        if (as.numeric(argv$noise_quantile) > 0) paste0(" = ", signif(thr$noise_floor, 3)) else "",
-        ") AND >= ", argv$min_reps,
-        " replicates with Signal >= the same threshold in any group (all replicates required ",
-        "if group has fewer). Count = sum of raw ",
-        ifelse(identical(argv$orientation, "forward"), "3'-end", "5'-end"),
-        " counts within group (integer evidence; active-site end per strandedness=", argv$orientation, "); ",
-        "Signal = group-mean normalized signal (per-sample normalized then averaged; missing = 0). ",
-        "Single-base, 0-based half-open; signal strand = transcript strand. ",
-        "Divergent-promoter sites appear once per transcript (site, transcript) pair. ",
-        "Density normalization: count / genebody-matrix column sum x 1e6 / kb (library-size proxy).")
+    note <- paste(readLines(argv$note_template, warn = FALSE), collapse = "\n")
+    note <- gsub("{active_frac}",    argv$active_frac,  note, fixed = TRUE)
+    note <- gsub("{peak_frac}",      argv$peak_frac,    note, fixed = TRUE)
+    note <- gsub("{noise_quantile}", argv$noise_quantile, note, fixed = TRUE)
+    note <- gsub("{min_reps}",       argv$min_reps,     note, fixed = TRUE)
+    note <- gsub("{active_end}",     ifelse(identical(argv$orientation, "forward"), "3'-end", "5'-end"), note, fixed = TRUE)
 
     dir.create(argv$output, showWarnings = FALSE, recursive = TRUE)
     out_path <- file.path(argv$output, "pol2_signal_table.tsv")

@@ -1,8 +1,8 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: preprocess
-// Chains: fastc -> fastp -> process_fastp
-// Purpose: Read QC, adapter trimming
+// Chains: fastqc -> fastp -> process_fastp
+// Purpose: 读段质控 + 接头修剪
 //
 
 include { FASTQC as FASTQC_RAW     } from '../modules/fastqc.nf'
@@ -22,7 +22,7 @@ workflow preprocess {
     FASTQC_RAW(read_ch)
 
     // ------------------------------------------------------------------
-    // Step 2: Adapter trimming and read QC with cutadapt (fastp wrapper)
+    // Step 2: Adapter trimming and read QC with fastp (fastp wrapper)
     // ------------------------------------------------------------------
     FASTP(read_ch, adapter_type)
 

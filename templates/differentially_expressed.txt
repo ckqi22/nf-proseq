@@ -1,0 +1,11 @@
+|log2FoldChange| >= log2({fc}) and Pvalue < {p}
+Legend:
+A: Gene identifier
+B: FoldChange value, filtered by threshold
+C: The logarithmic transformation (base 2) of the fold change values, positive values denote up-regulation, negative values denote down-regulation
+D: Statistical significance of the differential expression, filtered by threshold
+E: False Discovery Rate
+{count_range}: Raw Read Counts
+{fpkm_range}: Normalized Expression (FPKM), gene expression normalized as Fragments Per Kilobase of gene per Million mapped reads, accounting for both gene length and sequencing depth.
+{cpm_range}: Normalized Expression (CPM), Counts Per Million reads mapped, normalized for sequencing depth only.
+{annotation_range}: Gene annotation, functional annotations or metadata associated with each gene

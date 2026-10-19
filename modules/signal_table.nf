@@ -38,6 +38,7 @@ process SIGNAL_TABLE {
         --noise_quantile ${noise_quantile} \\
         --min_reps ${min_reps} \\
         --orientation ${orientation} \\
+        --note_template ${projectDir}/templates/pol2_signal_table.note.txt \\
         --output .
     """
 }

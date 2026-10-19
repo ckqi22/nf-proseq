@@ -1,0 +1,8 @@
+Legend:
+Sample: Sample name
+Raw Data Bases: Total bases of raw reads before filtering
+Raw Reads: Number of raw reads before filtering
+Clean Reads: Number of reads after adapter trimming and quality filtering
+Clean Ratio: Proportion of reads retained after filtering (Clean Reads / Raw Reads)
+Q30: Proportion of bases with Phred quality score >= Q30
+Duplication Rate: Sequencing duplication rate

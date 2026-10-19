@@ -8,7 +8,7 @@ process NORMALIZE {
     val methods          // comma-separated: cpm,fpkm[,rpkm]
     val name             // profile name (genebody | promoter | pol2)
     path spike_factors   // spikein_scale_factors.tsv；空 list 表示无 spike（不追加 .Spike 列）
-    path total_mapped    // collected *.total_mapped.txt（每样本单行 read1 mapped count）
+    path main_mapped     // collected *.main_mapped.txt（每样本单行 read1 mapped count，剔 spike 后）
 
     output:
     path "${name}.normalized.txt", emit: normalized
@@ -19,7 +19,7 @@ process NORMALIZE {
     Rscript ${projectDir}/bin/normalize.R \\
         --input ${matrix} \\
         --methods ${methods} \\
-        --total_mapped ${total_mapped.join(',')} \\
+        --total_mapped ${main_mapped.join(',')} \\
         ${spike_arg} \\
         --output ${name}.normalized.txt
     """

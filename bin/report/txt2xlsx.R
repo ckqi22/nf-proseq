@@ -27,9 +27,63 @@ option_list <- list(
   make_option(c("--sort_by"),  type = "character", default = "", help = "按此列排序（如 Sample）"),
   make_option(c("--diff_dir"),    type = "character", default = "", help = "差异表多文件合并模式：输入目录"),
   make_option(c("--diff_suffix"), type = "character", default = "", help = "差异表文件后缀（如 _all.txt / _de.txt）"),
-  make_option(c("--sheet_strip"), type = "integer", default = 0, help = "sheet 名去掉文件名尾部 N 个 _ 段（差异表用）")
+  make_option(c("--sheet_strip"), type = "integer", default = 0, help = "sheet 名去掉文件名尾部 N 个 _ 段（差异表用）"),
+  make_option(c("--fc"), type = "character", default = "", help = "差异表 FC 阈值（渲染 {fc} 占位）"),
+  make_option(c("--p"),  type = "character", default = "", help = "差异表 P 阈值（渲染 {p} 占位）"),
+  make_option(c("--profile_file"), type = "character", default = "", help = "main_mapped 口径表达谱（normalize.R 产物），差异表按 gene_id 覆盖 .Fpkm/.Cpm")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
+
+# ---- Excel 列字母 + note 模板渲染 ----
+col_letter <- function(n) {   # 1 -> A, 26 -> Z, 27 -> AA
+  s <- ""
+  while (n > 0) {
+    r <- (n - 1) %% 26
+    s <- paste0(intToUtf8(65 + r), s)
+    n <- (n - 1) %/% 26
+  }
+  s
+}
+closed_range <- function(idx) {   # "B~G"；单列则 "B"
+  if (length(idx) == 0) return("")
+  a <- col_letter(min(idx)); b <- col_letter(max(idx))
+  if (a == b) a else paste0(a, "~", b)
+}
+open_range <- function(idx) {     # "T~"（标注列起止未知，开放区间）
+  if (length(idx) == 0) return("")
+  paste0(col_letter(min(idx)), "~")
+}
+ranges_of <- function(cols) {
+  count_idx <- which(grepl("\\.Count$", cols))
+  fpkm_idx  <- which(grepl("\\.Fpkm$", cols))
+  cpm_idx   <- which(grepl("\\.Cpm$",  cols))
+  last_sample <- max(c(count_idx, fpkm_idx, cpm_idx), 0)
+  ann_idx <- if (last_sample < length(cols)) (last_sample + 1):length(cols) else integer(0)
+  list(count = closed_range(count_idx), fpkm = closed_range(fpkm_idx),
+       cpm = closed_range(cpm_idx), ann = open_range(ann_idx))
+}
+render_note <- function(note, cols, fc, p) {
+  r <- ranges_of(cols)
+  lines <- strsplit(note, "\n", fixed = TRUE)[[1]]
+  lines <- gsub("{count_range}", r$count, lines, fixed = TRUE)
+  lines <- gsub("{fpkm_range}",  r$fpkm,  lines, fixed = TRUE)
+  lines <- gsub("{annotation_range}", r$ann, lines, fixed = TRUE)
+  # .Cpm 行：数据无 .Cpm 列 → 整行删除；否则替换区间
+  ci <- which(grepl("{cpm_range}", lines, fixed = TRUE))
+  if (length(ci) == 1) {
+    if (r$cpm == "") lines <- lines[-ci]
+    else lines[ci] <- gsub("{cpm_range}", r$cpm, lines[ci], fixed = TRUE)
+  }
+  # 阈值行 {fc}/{p}：空值（无 compared_groups 或阈值不一致）→ 换通用说明
+  ti <- which(grepl("{fc}", lines, fixed = TRUE))
+  if (length(ti) == 1) {
+    lines[ti] <- if (nzchar(fc) && nzchar(p))
+                   gsub("{p}", p, gsub("{fc}", fc, lines[ti], fixed = TRUE), fixed = TRUE)
+                 else
+                   "|log2FoldChange| and Pvalue thresholds are set per comparison in config compared_groups"
+  }
+  paste(lines, collapse = "\n")
+}
 
 if (!nzchar(opt$note) && nzchar(opt$note_file) && file.exists(opt$note_file)) {
   opt$note <- paste(readLines(opt$note_file, warn = FALSE), collapse = "\n")
@@ -88,7 +142,8 @@ write_sheet <- function(wb, sheet_name, sub, title, note) {
                          fgFill = "#FFFF99", wrapText = TRUE,
                          halign = "left", valign = "top"),
              rows = cur_row, cols = 1:nc)
-    note_lines <- max(1, ceiling(nchar(note) / 80))
+    note_lines <- max(1, sum(vapply(strsplit(note, "\n", fixed = TRUE)[[1]],
+                                    function(l) max(1, ceiling(nchar(l) / 80)), numeric(1))))
     setRowHeights(wb, sheet_name, rows = cur_row, heights = note_lines * 14 + 6)
     cur_row <- cur_row + 1
   }
@@ -140,6 +195,17 @@ sort_df <- function(df) {
   df
 }
 
+# main_mapped 覆盖：差异表的 .Fpkm/.Cpm 是 colSums/edgeR lib.size 口径，按首列(gene_id)对齐后覆盖
+overlay_norm <- function(df, profile_df) {
+  key <- colnames(df)[1]
+  m <- match(df[[key]], profile_df[[key]])
+  keep <- !is.na(m)
+  for (col in grep("\\.(Fpkm|Cpm)$", colnames(df), value = TRUE)) {
+    df[[col]][keep] <- profile_df[[col]][m[keep]]
+  }
+  df
+}
+
 # ---------- 差异表多文件合并模式 ----------
 if (nzchar(opt$diff_dir)) {
   suffix_re <- paste0(gsub("\\.", "\\\\.", opt$diff_suffix), "$")
@@ -147,9 +213,16 @@ if (nzchar(opt$diff_dir)) {
   if (length(files) == 0) stop("diff_dir 下无匹配 *", opt$diff_suffix, " 的文件: ", opt$diff_dir)
   gcol <- opt$group_by
   if (!nzchar(gcol)) stop("差异表模式需 --group_by（如 Regulation）")
+  # main_mapped 口径表达谱（normalize.R 产物，必传），见 overlay_norm
+  profile_df <- read_df(opt$profile_file)
+
+  first_cols <- colnames(read_df(files[1]))
+  out_cols <- first_cols[first_cols != gcol]
+  opt$note <- render_note(opt$note, out_cols, opt$fc, opt$p)
   for (f in files) {
     df <- read_df(f)
     if (!(gcol %in% colnames(df))) stop("文件缺少 ", gcol, " 列: ", f)
+    df <- overlay_norm(df, profile_df)
     df <- sort_df(df)
     filebase <- sub(suffix_re, "", basename(f))
     if (opt$sheet_strip > 0) {
@@ -173,6 +246,8 @@ if (nzchar(opt$diff_dir)) {
 } else {
   df <- read_df(opt$input)
   df <- sort_df(df)
+  out_cols <- if (nzchar(opt$group_by) && opt$group_by %in% colnames(df)) colnames(df)[colnames(df) != opt$group_by] else colnames(df)
+  opt$note <- render_note(opt$note, out_cols, opt$fc, opt$p)
   if (nzchar(opt$group_by) && opt$group_by %in% colnames(df)) {
     gvals <- unique(df[[opt$group_by]])
     gvals <- gvals[!is.na(gvals)]   # 跳过 NA 分组（避免 NA. sheet + 整行 NA 空行）

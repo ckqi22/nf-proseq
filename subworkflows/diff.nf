@@ -1,9 +1,9 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: diff
-// Differential analysis on gene body counts.
-//   Method-agnostic take/emit contract. Method selected by params.diff.tool
-//   (deseq2 default / edger); downstream CHECKDE/plots/enrich are method-agnostic.
+// 基因体计数的差异分析。
+//   take/emit 契约与方法无关；方法由 params.diff.tool 选择（默认 edger / deseq2）；
+//   下游 CHECKDE/图/enrich 均方法无关。
 //
 
 include { DESEQ2  } from '../modules/diff/deseq2.nf'
@@ -29,8 +29,8 @@ workflow diff {
         lines.join('\n')
     }
 
-    // Method dispatch — params.diff.tool: deseq2 (default) | edger.
-    def method = params.diff?.tool ?: 'deseq2'
+    // Method dispatch — params.diff.tool: edger (default) | deseq2.
+    def method = params.diff?.tool ?: 'edger'
     if (method == 'edger') {
         EDGER(genebody_matrix, config_yml, annotation)
         result_ch = EDGER.out.result
@@ -49,14 +49,23 @@ workflow diff {
     DE_PLOT(result_ch)
     PCA_PLOT(result_ch)
 
-    def checkde_br = CHECKDE.out.checked.branch {
-        pass: it[0].text.trim().startsWith("PASS")
-        fail: !it[0].text.trim().startsWith("PASS")
+    // DE count QC（软跳过）：CHECKDE 的 flag 为 FAIL 时用 log.warn 提示（流程继续，仅跳过富集）。
+    // 用最常用的 map/filter 实现：map 里算 pass 布尔并顺手 log.warn，filter 只保留 PASS 送下游。
+    def checked = CHECKDE.out.checked.map { flag, dir ->
+        def pass = flag.text.trim().startsWith("PASS")
+        if (!pass) {
+            flag.text.readLines()
+                .findAll { line -> line.startsWith('Error:') }
+                .each { line ->
+                    log.warn "${line.replaceFirst('Error: ', '')}, enrichment skipped. "
+                }
+        }
+        [pass, dir]
     }
 
     emit:
     result         = result_ch                                        // unchanged — published to 06.
-    passed         = checkde_br.pass.map { _flag, dir -> dir }        // for enrich (pass-branch only)
+    passed         = checked.filter { pass, _dir -> pass }.map { _pass, dir -> dir }   // for enrich (pass only)
     checkde_result = CHECKDE.out.checked.map { flag, _dir -> flag }   // QC receipt — published to 06.
     de_plot        = DE_PLOT.out.plot
     pca_plot       = PCA_PLOT.out.pca

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# spikein_scale.R — 由 spike-in read 数计算每样本缩放因子，并可缩放计数矩阵
+# spikein_scale.R — 由 spike-in read 数计算每样本缩放因子
 #
 # 公式：
 #   factor_i      = 1e6 / spike_count_i            # RPM-spike：乘到 bigWig / 矩阵
@@ -8,16 +8,12 @@
 #
 # 输入：
 #   --counts      两列（无表头）：sample \t spike_count
-#   --matrix      可选 count 矩阵（gene_id  Length  <sample1> <sample2> ...）
-#                 列名需与 --counts 的 sample 一致
 #
 # 输出：
 #   spikein_scale_factors.tsv   sample spike_count factor size_factor
-#   <matrix>.spike.matrix.txt   （仅当给 --matrix）每样本列 × factor
 #
 # Usage:
 #   Rscript spikein_scale.R --counts spike_counts.tsv --output_dir ./
-#   Rscript spikein_scale.R --counts spike_counts.tsv --matrix genebody.matrix.txt --output_dir ./
 # =============================================================================
 suppressWarnings(suppressMessages({
     library(argparser)
@@ -25,7 +21,6 @@ suppressWarnings(suppressMessages({
 
 argv <- arg_parser("Spike-in scale factors + matrix scaling")
 argv <- add_argument(argv, "--counts",     help = "Two columns (no header): sample \\t spike_count")
-argv <- add_argument(argv, "--matrix",     help = "Optional count matrix (gene_id Length <samples>)")
 argv <- add_argument(argv, "--output_dir", help = "Output directory", default = "./")
 argv <- parse_args(argv)
 
@@ -51,33 +46,6 @@ main <- function(argv) {
     out_factors <- file.path(argv$output_dir, "spikein_scale_factors.tsv")
     write.table(ct, out_factors, sep = "\t", row.names = FALSE, quote = FALSE)
     message("[spikein_scale] wrote ", out_factors)
-
-    # ── 可选：缩放计数矩阵（列格式同 bin/normalize.R 输入：gene_id Length <samples>）──
-    if (!is.null(argv$matrix) && !is.na(argv$matrix) && nzchar(argv$matrix)) {
-        if (!file.exists(argv$matrix))
-            stop("[spikein_scale] --matrix not found: ", argv$matrix)
-        m <- read.delim(argv$matrix, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
-                        check.names = FALSE)
-        sample_cols <- setdiff(names(m), c("gene_id", "Length"))
-        if (length(sample_cols) == 0)
-            stop("[spikein_scale] no sample columns found in matrix")
-
-        fac <- setNames(ct$factor, ct$sample)
-        missing <- setdiff(sample_cols, names(fac))
-        if (length(missing) > 0)
-            message("[spikein_scale] WARNING: no spike factor for column(s) ",
-                    paste(missing, collapse = ", "), " (left unscaled)")
-
-        for (s in sample_cols) {
-            f <- fac[s]
-            if (!is.na(f) && is.finite(f)) m[[s]] <- m[[s]] * f
-        }
-
-        base <- sub("\\.txt$", "", basename(argv$matrix))
-        out_m <- file.path(argv$output_dir, paste0(base, ".spike.matrix.txt"))
-        write.table(m, out_m, sep = "\t", row.names = FALSE, quote = FALSE)
-        message("[spikein_scale] wrote ", out_m)
-    }
 }
 
 main(argv)

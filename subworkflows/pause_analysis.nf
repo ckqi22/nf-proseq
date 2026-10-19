@@ -1,14 +1,11 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: pause_analysis
-// Pausing index (length-normalized): promoter / gene body.
-//   Inputs are the merged count matrices produced by `quantification`.
-//   Groups come from the samplesheet.
-//   1. compute PI table (pausing_index.R)
-//   2. boxplot by group (pausing_boxplot.R)
-//
-//   NOTE: differential analysis no longer lives here — it moved to
-//   subworkflows/diff.nf (DESeq2 on gene body counts).
+// 暂停指数（计数长度归一化后的比值）：promoter / genebody。
+//   输入为 pol2_count 产出的合并计数矩阵（promoter_matrix / genebody_matrix）。
+//   分组来自 samplesheet。
+//   1. 算 PI 表（pausing_index.R）
+//   2. 按分组画 boxplot（pausing_boxplot.R）
 //
 
 include { pausing_index   } from '../modules/pause_analysis/pausing_index.nf'

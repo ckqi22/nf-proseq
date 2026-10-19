@@ -1,16 +1,16 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# normalize.R — Normalize a count matrix to CPM / FPKM / Spike so samples are
+# normalize.R — Normalize a count matrix to CPM / FPKM so samples are
 # comparable. Each normalization method is a function; which methods to run is
 # selected via --methods (comma-separated), default "cpm,fpkm" (both).
 #
 # Input matrix (tab-separated, header):  gene_id  Length  <sample1>  <sample2> ...
 # Output matrix:                         gene_id  <s>.<Suffix> ...
-#   Suffix per method: Fpkm / Cpm / Spike.
+#   Suffix per method: Fpkm / Cpm / Rpkm.
 #
 #   CPM  / RPM  = count * 1e6 / library_size
 #   FPKM / RPKM = count * 1e9 / (length * library_size)
-#   Spike       = count * 1e6 / spike_count
+#   Spike       = count * 1e6 / spike_count   (via --spike_factors, independent of --methods)
 # =============================================================================
 suppressWarnings(suppressMessages({
     library(argparser)

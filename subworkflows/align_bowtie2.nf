@@ -12,8 +12,8 @@ include { EXTRACT_R1            } from '../modules/samtools/extract_r1.nf'
 workflow align_bowtie2{
     take:
     reads_ch          // channel: [ val(meta), [ reads ] ]
-    index_ch          //
-    fasta_ch          //
+    index_ch          // tuple(val(meta), path(index_dir)) — bowtie2 索引目录，从 *.1.bt2 反推前缀
+    fasta_ch          // tuple(val(meta), path(fasta)) — 参考基因组 fasta（samtools stats --reference）
     spike_chroms_ch   // val(路径字符串)；空串 = 不剔 spike（无 spike-in）
 
     main:
@@ -46,8 +46,8 @@ workflow align_bowtie2{
     unmapped_bam = BOWTIE2_ALIGN.out.unmapped_bam    // tuple(meta, unmapped.bam) — 未比对 reads（SE=整条 / PE=仅 R1），供排查/重比对
     bam_bai     = bam_bai_ch                        // tuple(meta, bam, bai) — 供 SPIKEIN_COUNT(idxstats 需 .bai)
     r1_bam      = EXTRACT_R1.out.r1_bam             // tuple(meta, r1.bam) — read1 单端化 BAM（SE=原 bam 拷贝）
-    total_mapped = EXTRACT_R1.out.total_mapped       // tuple(meta, sample.total_mapped.txt) — read1 mapped count（含 spike，供 spike-in 占比质控）
-    main_mapped  = EXTRACT_R1.out.main_mapped        // tuple(meta, sample.main_mapped.txt) — read1 mapped count（纯主，剔 spike 后，供 CPM 分母）
+    total_mapped = EXTRACT_R1.out.total_mapped       // tuple(meta, sample.total_mapped.txt) — read1 mapped count（含 spike）；值在 main.nf 读成整数并入 meta.total_mapped（spike 占比质控分母）
+    main_mapped  = EXTRACT_R1.out.main_mapped        // tuple(meta, sample.main_mapped.txt) — read1 mapped count（纯主，剔 spike 后）；值在 main.nf 读成整数并入 meta.main_mapped（pol2_count.nf:36 的 CPM 分母 scale_cpm）
     alignRate   = BOWTIE2_ALIGN.out.alignRate
     flagstat    = STAT.out.flagstat
     idxstats    = STAT.out.idxstats

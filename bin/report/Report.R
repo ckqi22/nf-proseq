@@ -15,17 +15,13 @@ parser <- ArgumentParser(description = "Package PRO-seq results into a client de
 parser$add_argument('-o', '--output_dir', default = '.', help = 'output directory')
 parser$add_argument('--config', default = 'params.yml', help = 'params.yml config file')
 parser$add_argument('--samplesheet', default = 'samplesheet.csv', help = 'samplesheet csv file')
-parser$add_argument('--diff_dir', help = 'DESeq2 output directory (deprecated; xlsx now from --xlsx_dir)')
 parser$add_argument('--enrich_dir', help = 'GO/KEGG/GSEA enrichment results directory')
 parser$add_argument('--metagene_dir', help = 'metagene results directory')
 parser$add_argument('--pausing_dir', help = 'pausing index results directory')
-parser$add_argument('--pol2_signal', help = 'pol2_signal_table.tsv (Pol II active site)')
 parser$add_argument('--pol2_signal_xlsx', help = 'PROSeq_pol2_signal.xlsx (Pol II active site, with note)')
 parser$add_argument('--plot_dir', help = 'scatter/volcano/heatmap figure directory')
-parser$add_argument('--statistics', help = 'read statistics file (deprecated; xlsx now from --xlsx_dir)')
 parser$add_argument('--xlsx_dir', help = 'txt2xlsx output directory (TXT2XLSX 模块产物)')
 parser$add_argument('--resolved_config', help = 'config.txt from parse_config.py (for build/gtf resolution)')
-parser$add_argument('--fastqc_images', help = 'extract_fastqc_images.sh output dir (raw/ + trimmed/)')
 parser$add_argument('--base_quality_plot', help = 'base_quality_plot.R output dir (*.tiff/*.pdf: read1/2_before/after_filtering)')
 parser$add_argument('--group_heatmaps', help = 'group-level metagene heatmap dir (from metagene_group)')
 parser$add_argument('--resources_dir', default = '/workplace/pipeline/resources', help = 'resources directory')
@@ -43,17 +39,13 @@ normalize_optional <- function(p) {
   if (is.null(p) || is.na(p) || nchar(p) == 0) return(NULL)
   normalizePath(p, mustWork = FALSE)
 }
-diff_dir        <- normalize_optional(args$diff_dir)
 enrich_dir      <- normalize_optional(args$enrich_dir)
 metagene_dir    <- normalize_optional(args$metagene_dir)
 pausing_dir     <- normalize_optional(args$pausing_dir)
 plot_dir        <- normalize_optional(args$plot_dir)
-pol2_signal     <- normalize_optional(args$pol2_signal)
 pol2_signal_xlsx <- normalize_optional(args$pol2_signal_xlsx)
-statistics      <- normalize_optional(args$statistics)
 xlsx_dir        <- normalize_optional(args$xlsx_dir)
 resolved_config <- normalize_optional(args$resolved_config)
-fastqc_images   <- normalize_optional(args$fastqc_images)
 base_quality_plot <- normalize_optional(args$base_quality_plot)
 group_heatmaps  <- normalize_optional(args$group_heatmaps)
 
@@ -75,7 +67,6 @@ project_no    <- get_field(config, 'projectNo.')
 institute     <- get_field(config, 'institute')
 species       <- get_field(config, 'species')
 build         <- get_field(config, 'build')
-instrument    <- get_field(config, 'instrument_model')
 sample_type   <- get_field(config, 'sample_type')
 sample_number <- get_field(config, 'sample_number')
 strandedness  <- get_field(config, 'strandedness', 'reverse')
@@ -194,7 +185,6 @@ sample_information <- function(samplesheet, config, build, output_dir) {
     c('Species', tools::toTitleCase(tolower(species))),
     c('Sample type', sample_type),
     c('Sample number', sample_number),
-    c('Instrument model', instrument),
     c('Genome build', build),
     c('Library orientation (R1 vs nascent RNA)', strandedness)
   )
@@ -203,7 +193,7 @@ sample_information <- function(samplesheet, config, build, output_dir) {
     writeData(wb, 'Sheet1', info_rows[[i]][2], startRow = 1 + i, startCol = 2)
   }
 
-  data_row <- 8
+  data_row <- 7
   writeData(wb, 'Sheet1', sample_df, startRow = data_row, startCol = 1, rowNames = FALSE)
 
   addStyle(wb, 'Sheet1', title_style, rows = 1, cols = 1)

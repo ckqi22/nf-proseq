@@ -38,7 +38,7 @@ workflow metagene_group {
     // 组键：'unknown'（samplesheet 缺 group 列的缺省值，main.nf:71 写入）= 未分组
     // → 退化为按样本各自成组，随后被「≥2 样本」过滤 → 不产生组图
     // 从输入 bigwig 文件名派生信号描述符 sig（无链向）与输出名后缀：
-    //   S1_single_plus_cpm → plus_suffix=full 不对，这里 single_plus_cpm；sig=single_cpm；
+    //   S1_single_plus_cpm → plus_suffix=single_plus_cpm；sig=single_cpm；
     //   S1_full_plus_spike → plus_suffix=full_plus_spike；sig=full_spike。
     // plus_suffix/minus_suffix 供 BIGWIGAVERAGE 拼组平均输出名，sig 供下游
     //   computeMatrix/plot 输出命名 + y 轴标签（与按样本版 metagene.nf 一致）。

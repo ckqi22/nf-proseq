@@ -1,11 +1,10 @@
 #!/usr/bin/env nextflow
 //
 // SUBWORKFLOW: quantification
-// Per-sample featureCounts over the gene body union annotation (one region type),
-// then merge per-sample count files into one clean count matrix.
+// 逐样本 featureCounts 对 genebody-union 注释计数（单一区域类型），
+// 再把每样本计数文件合并成一张干净计数矩阵。
 //
-// featureCounts runs once per sample — the -p flag is decided per sample, so
-// single-end and paired-end samples coexist correctly in one run.
+// featureCounts 每样本跑一次 —— -p 标志逐样本决定，单端/双端样本可在同一 run 里正确共存。
 //
 // read1 单端化已上移到 align_bowtie2（EXTRACT_R1 每样本只抽一次），
 // 此处直接吃现成的 r1_bam，不再自行抽 read1。

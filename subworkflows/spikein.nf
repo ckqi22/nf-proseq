@@ -30,6 +30,9 @@ workflow spikein {
         .map { meta, spike_file, mapped_file ->
             def spike_count         = spike_file.text.trim().toInteger()
             def total_mapped_count  = mapped_file.text.trim().toInteger()
+            if (total_mapped_count <= 0) {
+                error "sample '${meta.sample}' total_mapped <= 0 (${total_mapped_count}) — 无法计算 spike 占比"
+            }
             def spike_fraction      = spike_count.toDouble() / total_mapped_count
             if (spike_fraction <= min_fraction) {
                 error "sample '${meta.sample}' spike fraction ${spike_fraction} (spike_count=${spike_count} / total_mapped=${total_mapped_count}) <= spike_min_fraction ${min_fraction}"

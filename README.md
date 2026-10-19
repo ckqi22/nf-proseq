@@ -68,6 +68,7 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 |---|---|
 | `spike_genome` | `information_config` 里的 section 名（如 `dm6`），自动查 spike fasta |
 | `spike_fasta` | 直接给 spike fasta 路径，覆盖 `spike_genome` 查找 |
+| `spike_gtf` | 预留（本次不参与计数，idxstats 按染色体统计） |
 | `spike_index` | 预构建的「主+spike 合并」bowtie2 索引前缀，给则跳过 concat+build |
 | `spike_chroms` | spike 染色体名单文件（配合 `spike_index` 必填） |
 | `spike_min_fraction` | spike 占比下限（`spike_count / total_mapped`），`<=` 此值报错退出；`0.0` = 仅拒绝 0 spike reads |
@@ -84,11 +85,14 @@ SRR28785830,WT_R1,WT,/path/to/SRR28785830.fastq.gz
 | `species` / `build` | mouse / null | 参考基因组；`build` 覆盖 species 映射 |
 | `sample_sheet` | samplesheet.csv | 样本表（相对启动目录） |
 | `adapter` | `I` | 接头类型：`I`/`UMI`/`HT`/`SP` |
+| `adapter_sequence` | — | 接头序列（仅 `adapter=I` 时生效） |
+| `umi_length` | `7` | UMI 长度（仅 `adapter=UMI` 时生效） |
+| `remove_rrna` | `false` | 比对前去 rRNA（bowtie2 比对 `rRNA_index`，只按 R1 判定） |
 | `strandedness` | `reverse` | R1 相对新生 RNA 的方向：`reverse`=R1 反向互补（antisense，标准 PRO-seq，活性位点=R1 5' 端，featureCounts `-s 2`）/ `forward`=R1 同向（sense，小RNA建库，活性位点=R1 3' 端，featureCounts `-s 1`）。|
 | `signal_mode` | single | 分析信号：`single`=单碱基活性位点端（末端随 `strandedness`：reverse→5' 端 / forward→3' 端） / `full`=full-read 覆盖度 / `both`=都算 |
-| `normalize_methods` | cpm,fpkm | profile 表归一化（cpm/fpkm/rpkm，逗号分隔） |
 | `report` | true | 是否打包报告 |
-| `compared_groups` | — | 差异比较组列表：`A, B, FC, P, paired/unpaired` |
+| `diff.tool` | `edger` | 差异分析方法：`edger`（默认）/ `deseq2` |
+| `diff.compared_groups` | — | 差异比较组列表（嵌套在 `diff:` 下）：`A, B, FC, P, paired/unpaired` |
 | `spike_min_fraction` | 0.0 | spike-in reads 占比下限（`spike_count/total_mapped`），低于即报错 |
 
 QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值等分别在 `threshold:`、`tss:`、`metagene:`、`diff:`、`signal_table:` 段配置。
@@ -107,11 +111,13 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 > **口径说明**：定量、差异、富集为**基因级**（featureCounts 按 `gene_id` 合并）；Pol II 覆盖度、暂停指数、信号表为**转录本级**（promoter/genebody 计数矩阵含 `transcript_id, gene_id, Length` 三键列）。
 
 0. **配置解析 / 基因组准备**：`parse_config` → `prepare_genome`（promoter/genebody/tss BED（转录本口径）+ tx2gene + genebody-union SAF + bowtie2 索引）。
-1. **质控**：Fastp 去接头 + FastQC（raw/trimmed）。
+1. **质控**：Fastp 去接头 + FastQC（raw/trimmed）；`remove_rrna=true` 时先比对 `rRNA_index` 去 rRNA。
+
+   > 去 rRNA **只按 R1 判定**：PRO-seq 下游（覆盖度/暂停指数/信号表）只取 R1 的 5' 端（比对后 read1 单端化），R2 仅是配对端、不进入任何下游分析。故只要 R1 未比对到 rRNA 就保留该 read 对（R2 是否命中 rRNA 不影响），R1 命中 rRNA 才整对丢弃——既保证进入下游的 R1 均非 rRNA，也不因 R2 误判而丢掉有效 R1 信号；QC 的 rRNA 占比即按 R1 比对率（overall alignment rate）估算。
 2. **比对**：Bowtie2（read1 单端化供覆盖度分析）。
 3. **spike-in**（条件）：统计每样本 spike reads，生成归一化因子。
 4. **定量**：featureCounts 基因体计数（genebody union）。
-5. **差异表达**（条件）：DESeq2（依赖 `compared_groups`）。
+5. **差异表达**（条件）：edger（默认）/ deseq2（依赖 `diff.compared_groups`）。
 6. **富集**（条件）：GO/KEGG/GSEA。
 7. **Pol II 覆盖度**：bedtools genomecov → bedGraph/bigWig（按 `signal_mode` 门控：single=单碱基 5' 端 / full=full-read / both=两者都算；各出 raw + cpm，开 spike 时再并行出 spike 轨）。
 8. **TSS metagene**：deeptools computeMatrix + plotProfile/plotHeatmap（每样本 + 组平均；开 spike 用 spike 轨、否则 CPM，命名随信号）。
@@ -130,7 +136,7 @@ QC 阈值、TSS/暂停指数、metagene 窗口、差异阈值、信号表阈值�
 | `03.Data_QC/` | Fastp 报告、trimmed reads、碱基质量图、统计 |
 | `04.Alignment/` | BAM/BAI、比对率 |
 | `05.Quantification/` | 基因体计数矩阵、profile 表（`.Fpkm/.Cpm/.Rpkm/.Spike`）、spike 因子表 |
-| `06.Differential_Expression/` | DESeq2 结果、CheckDE、火山图、PCA |
+| `06.Differential_Expression/` | edger/DESeq2 结果、CheckDE、火山图、PCA |
 | `07.Enrich/` | GO/KEGG/GSEA 富集结果 |
 | `08.Pol2_coverage/` | 覆盖度 bedGraph/bigWig（raw/cpm/spike × single/full）、组平均 bigWig、`pol2_signal_table.tsv`（逐碱基信号表） |
 | `09.TSS_Metagene/` | metagene profile/heatmap 图与矩阵 |

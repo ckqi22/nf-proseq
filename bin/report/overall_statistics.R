@@ -2,11 +2,6 @@
 # ============================================================
 # overall_statistics.R — 合并 read_statistics + bowtie2 比对率
 #
-# 参照 TT-seq 的 overall_statistics.xlsx（read stats + mapping stats 合并表）。
-# nf-proseq 没有单独的 mapping_statistics.txt，只有 bowtie2 的 stderr 摘要
-# （ALIGN 里 `2> >(tee ${sample}_summary_bowtie2.txt)`），这里直接从中取
-# 「overall alignment rate」合并进 overall_statistics。
-#
 # 用法:
 #   Rscript overall_statistics.R \
 #       --read_statistics     results/03.Data_QC/read_statistics.txt \

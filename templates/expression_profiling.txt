@@ -1,0 +1,6 @@
+Legend:
+A: Gene identifier
+{count_range}: Raw Read Counts
+{fpkm_range}: Normalized Expression (FPKM), gene expression normalized as Fragments Per Kilobase of gene per Million mapped reads, accounting for both gene length and sequencing depth.
+{cpm_range}: Normalized Expression (CPM), Counts Per Million reads mapped, normalized for sequencing depth only.
+{annotation_range}: Gene annotation, functional annotations or metadata associated with each gene

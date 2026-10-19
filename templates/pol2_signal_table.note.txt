@@ -1,0 +1,6 @@
+Legend:
+chrom/start/end: Single-base site (0-based), signal strand = transcript strand.
+<group>.Count: Sum of raw {active_end} counts within the group.
+<group>.Signal: Group-mean normalized signal (per-sample normalized then averaged; missing = 0).
+transcript_id/gene_id/Strand: Transcript and gene identity.
+Parameters: active_frac={active_frac}, peak_frac={peak_frac}, noise_quantile={noise_quantile}, min_reps={min_reps}.

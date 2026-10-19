@@ -46,6 +46,20 @@ process ALIGN {
         -S ${meta.sample}.sam \\
         2> ${meta.sample}_summary_bowtie2.txt
 
+    # 比对率 QC：overall alignment rate 低于阈值直接报错终止（失败快速，避免后续 sort 白跑）
+    awk -v t="${params.threshold.mapping_rate}" '
+        /overall alignment rate/ {
+            gsub("%", "", \$1); rate = \$1 + 0;
+            print "  [QC] ${meta.sample}: overall alignment rate = " rate "%";
+            if (rate < t * 100) {
+                print "ERROR: ${meta.sample}: alignment rate " rate "% below threshold " (t * 100) "%" > "/dev/stderr";
+                exit 1;
+            }
+            found = 1;
+        }
+        END { if (!found) { print "ERROR: overall alignment rate not found in bowtie2 summary" > "/dev/stderr"; exit 1 } }
+    ' ${meta.sample}_summary_bowtie2.txt
+
     samtools view -@ 2 -bS ${flag_args} -F 4 -q 20 ${meta.sample}.sam \\
         | samtools sort -@ ${task.cpus} -o ${meta.sample}.bam
     samtools view -@ 2 -bS -f ${unmapped_flag} ${meta.sample}.sam \\
